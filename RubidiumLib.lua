@@ -1,16 +1,15 @@
 --[[
-    Rubidium UI Library - Framework v1.7 (Fixes & Incremental Updates)
+    Rubidium UI Library - Framework v1.8 (Animation Fix & Rail Sliding)
     
     保留功能：
     1. 移动端适配 (GetScale)
-    2. 拖拽系统 (MakeDraggable)
-    3. 动态布局核心 (UpdateLayout)
+    2. 基础拖拽与吸附
+    3. 动态布局核心
     
-    修复内容：
-    1. [Restore] 副标题 (Subtitle) 重新加入 TitleBar。
-    2. [Fix] 全屏逻辑补全。
-    3. [Fix] 分离模式下 Sidebar 自动飞向屏幕边缘。
-    4. [Fix] 缩进箭头 (ToggleArrow) 仅在 Detached 模式显示。
+    本次更新：
+    1. [Fix] 标题/副标题边距收紧 (Margin Tightening)。
+    2. [Fix] 合并动画修复：引入 IsAnimating 锁，防止 RenderStepped 冲突。
+    3. [New] 轨道拖拽 (Rail Drag)：分离模式下 Sidebar 强制贴边滑动。
 ]]
 
 local UserInputService = game:GetService("UserInputService")
@@ -35,7 +34,8 @@ end
 
 local Rubidium = {
     Name = "Rubidium",
-    State = "Unified", -- "Unified" | "Detached"
+    State = "Unified", 
+    IsAnimating = false, -- [New] 动画锁状态
     ActiveWindows = {}, 
     Config = {
         ThemeColor = Color3.fromRGB(0, 170, 255),
@@ -43,7 +43,7 @@ local Rubidium = {
         SidebarBg = Color3.fromRGB(25, 25, 25),
         TextColor = Color3.fromRGB(240, 240, 240),
         SubTextColor = Color3.fromRGB(150, 150, 150),
-        AnimSpeed = 0.4,
+        AnimSpeed = 0.5, -- 稍微调慢一点让动画更明显
         BaseSize = Vector2.new(600, 380), 
         SidebarWidth = 80
     }
@@ -56,7 +56,7 @@ function Rubidium:GetScale()
 end
 
 -- ==========================================
--- 拖拽系统 (保持不变)
+-- 拖拽系统 (增强版：支持轨道滑动)
 -- ==========================================
 function Rubidium:MakeDraggable(target, draggingPart)
     draggingPart = draggingPart or target
@@ -64,10 +64,36 @@ function Rubidium:MakeDraggable(target, draggingPart)
     
     local function update(input)
         local delta = input.Position - dragStart
+        local scale = self:GetScale()
+        
+        -- [Logic] 默认自由移动
+        local newX = startPos.X.Offset + delta.X
+        local newY = startPos.Y.Offset + delta.Y
+        
+        -- [Fix 2] 分离模式下 Sidebar 的轨道限制逻辑
+        if self.State == "Detached" and target.Name == "Sidebar" then
+            local screenWidth = Camera.ViewportSize.X
+            local mouseX = input.Position.X
+            
+            -- 判断靠左还是靠右
+            if mouseX < screenWidth / 2 then
+                -- 锁定在左边缘 (留 10px 间隙)
+                newX = 10 
+            else
+                -- 锁定在右边缘
+                newX = screenWidth - (target.Size.X.Offset) - 10
+            end
+            
+            -- Y轴允许自由滑动，但限制在屏幕内
+            -- 这里可以加 Clamp，暂时保持自由
+        end
+
         local newPos = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            startPos.X.Scale, newX,
+            startPos.Y.Scale, newY
         )
+        
+        -- 使用极短的 Tween 代替直接赋值，保持手感
         TweenService:Create(target, TweenInfo.new(0.05), {Position = newPos}):Play()
     end
 
@@ -80,6 +106,7 @@ function Rubidium:MakeDraggable(target, draggingPart)
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
+                    -- 拖拽结束时的吸附检查 (CheckSnap 依然保留用于处理特殊吸附动画)
                     if self.State == "Detached" and target.Name == "Sidebar" then
                         self:CheckSnap(target)
                     end
@@ -102,7 +129,7 @@ function Rubidium:MakeDraggable(target, draggingPart)
 end
 
 -- ==========================================
--- 核心逻辑：创建窗口
+-- 创建窗口 (UI 细节调整)
 -- ==========================================
 function Rubidium:CreateWindow(options)
     local scale = self:GetScale()
@@ -111,7 +138,7 @@ function Rubidium:CreateWindow(options)
     
     options = options or {}
     local title = options.Title or "Rubidium"
-    local subtitle = options.Subtitle or "UI Library" -- [Restore] 获取副标题
+    local subtitle = options.Subtitle or "UI Library"
     
     local screenGui = Create("ScreenGui", {
         Name = "RubidiumGui",
@@ -119,6 +146,7 @@ function Rubidium:CreateWindow(options)
         ResetOnSpawn = false
     })
 
+    -- Sidebar (保持不变)
     local sidebarFrame = Create("Frame", {
         Name = "Sidebar",
         BackgroundColor3 = self.Config.SidebarBg,
@@ -137,20 +165,21 @@ function Rubidium:CreateWindow(options)
         })
     })
 
-    -- [ToggleArrow] 初始隐藏，仅 Detached 显示
+    -- ToggleArrow (保持不变)
     local toggleArrow = Create("ImageButton", {
         Name = "ToggleArrow",
         BackgroundColor3 = self.Config.SidebarBg,
         Position = UDim2.new(1, -5, 0.5, -15), 
         Size = UDim2.new(0, 20, 0, 30),
-        Visible = false, -- [Fix] 初始不可见
-        ZIndex = 0, -- 在 Sidebar 下层或者边缘
+        Visible = false, 
+        ZIndex = 0, 
         Image = "rbxassetid://6031091004", 
         Parent = sidebarFrame
     }, {
         Create("UICorner", {CornerRadius = UDim.new(0, 4)})
     })
 
+    -- MainFrame (保持不变)
     local mainFrame = Create("Frame", {
         Name = "MainFrame",
         BackgroundColor3 = self.Config.MainBg,
@@ -161,17 +190,18 @@ function Rubidium:CreateWindow(options)
         Create("UICorner", {CornerRadius = UDim.new(0, 8)})
     })
 
+    -- TitleBar (细节调整)
     local titleBar = Create("Frame", {
         Name = "TitleBar",
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 40 * scale),
         Parent = mainFrame
     }, {
-        -- [Restore] Title & Subtitle 布局
+        -- [Fix 3] 调整边距，从 20 改为 10，使其紧贴 UI 边缘
         Create("TextLabel", {
             Name = "Title",
             BackgroundTransparency = 1,
-            Position = UDim2.new(0, 20, 0, 5 * scale),
+            Position = UDim2.new(0, 10 * scale, 0, 5 * scale), -- Reduced padding
             Size = UDim2.new(0, 200, 0, 16 * scale),
             Font = Enum.Font.GothamBold,
             Text = title,
@@ -182,7 +212,7 @@ function Rubidium:CreateWindow(options)
         Create("TextLabel", {
             Name = "Subtitle",
             BackgroundTransparency = 1,
-            Position = UDim2.new(0, 20, 0, 22 * scale), -- 在 Title 下方
+            Position = UDim2.new(0, 10 * scale, 0, 22 * scale), -- Reduced padding
             Size = UDim2.new(0, 200, 0, 12 * scale),
             Font = Enum.Font.Gotham,
             Text = subtitle,
@@ -192,6 +222,7 @@ function Rubidium:CreateWindow(options)
         })
     })
 
+    -- Controls (保持不变)
     local controls = Create("Frame", {
         Name = "Controls",
         BackgroundTransparency = 1,
@@ -209,7 +240,6 @@ function Rubidium:CreateWindow(options)
         HorizontalAlignment = Enum.HorizontalAlignment.Right
     })
 
-    -- 按钮事件绑定
     local function addBtn(id, icon, order, fn)
         local btn = Create("ImageButton", {
             Name = id,
@@ -223,21 +253,14 @@ function Rubidium:CreateWindow(options)
         btn.MouseButton1Click:Connect(fn)
     end
 
-    -- [Detached Logic]
-    addBtn("Detach", "rbxassetid://6031094678", 1, function() 
-        self:ToggleState() 
-    end) 
-    
-    -- [Fullscreen Logic]
+    addBtn("Detach", "rbxassetid://6031094678", 1, function() self:ToggleState() end) 
     addBtn("Fullscreen", "rbxassetid://6031094670", 2, function() 
-        -- 查找当前窗口对象 (暂定第1个，多窗口需传参)
         local win = self.ActiveWindows[1] 
         if win then
             win.IsFullscreen = not win.IsFullscreen
             self:SetFullscreen(win, win.IsFullscreen)
         end
     end)
-    
     addBtn("Close", "rbxassetid://6031090990", 3, function() screenGui:Destroy() end)
 
     local windowObj = { Instance = mainFrame, Sidebar = sidebarFrame, ToggleArrow = toggleArrow, Scale = scale, IsFullscreen = false }
@@ -251,63 +274,95 @@ function Rubidium:CreateWindow(options)
 end
 
 -- ==========================================
--- 布局与状态管理 (Fixes Applied)
+-- 布局与状态管理
 -- ==========================================
 function Rubidium:UpdateLayout()
     local scale = self:GetScale()
     local bSize = self.Config.BaseSize * scale
     local sbWidth = self.Config.SidebarWidth * scale
 
+    -- [Fix 1] 标记动画开始，阻止 RenderStepped 干扰
+    self.IsAnimating = true 
+
     for i, win in ipairs(self.ActiveWindows) do
-        if win.IsFullscreen then return end -- 全屏时不干预
+        if win.IsFullscreen then 
+            self.IsAnimating = false
+            return 
+        end 
 
         local targetPos, targetSize
         local sbTargetPos, sbTargetSize
 
         if self.State == "Unified" then
-            -- [Unified] 
-            win.ToggleArrow.Visible = false -- [Fix] 隐藏箭头
+            win.ToggleArrow.Visible = false 
             
-            -- MainFrame 居中
             targetSize = UDim2.new(0, bSize.X - sbWidth, 0, bSize.Y)
             targetPos = UDim2.new(0.5, (-bSize.X/2) + sbWidth, 0.5, -bSize.Y/2)
             
-            -- Sidebar 将在 RenderStepped 中跟随，但在 Toggle 时我们需要给它一个初始动画去“合体”
-            -- 计算 Sidebar 在 MainFrame 左侧的位置
             sbTargetSize = UDim2.new(0, sbWidth, 0, bSize.Y)
+            -- 动画目标：精确计算合并位置
             sbTargetPos = UDim2.new(
                 targetPos.X.Scale, targetPos.X.Offset - sbWidth + 5,
                 targetPos.Y.Scale, targetPos.Y.Offset
             )
 
         else
-            -- [Detached] 
-            win.ToggleArrow.Visible = true -- [Fix] 显示箭头
+            win.ToggleArrow.Visible = true 
             
-            -- MainFrame 独立居中 (或网格排列，这里简化为单窗口居中)
             targetSize = UDim2.new(0, bSize.X * 0.9, 0, bSize.Y * 0.9)
             targetPos = UDim2.new(0.5, - (bSize.X * 0.9)/2, 0.5, - (bSize.Y * 0.9)/2)
             
-            -- [Fix] Sidebar 自动飞向屏幕左边缘
-            sbTargetSize = UDim2.new(0, 60 * scale, 0, 300 * scale) -- 变窄变高
-            sbTargetPos = UDim2.new(0, 10, 0.5, -150 * scale)
+            sbTargetSize = UDim2.new(0, 60 * scale, 0, 300 * scale)
+            sbTargetPos = UDim2.new(0, 10, 0.5, -150 * scale) -- 默认飞向左侧
         end
 
-        -- 执行 MainFrame 动画
-        TweenService:Create(win.Instance, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        local tMain = TweenService:Create(win.Instance, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
             Position = targetPos,
             Size = targetSize
-        }):Play()
+        })
+        tMain:Play()
 
-        -- 执行 Sidebar 动画
-        TweenService:Create(win.Sidebar, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        local tSb = TweenService:Create(win.Sidebar, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
             Position = sbTargetPos,
             Size = sbTargetSize
-        }):Play()
+        })
+        tSb:Play()
+        
+        -- [Fix 1] 动画结束回调
+        tSb.Completed:Connect(function()
+            self.IsAnimating = false -- 释放锁，允许 RenderStepped 接管吸附
+        end)
     end
 end
 
+function Rubidium:ToggleState()
+    self.State = (self.State == "Unified") and "Detached" or "Unified"
+    self:UpdateLayout()
+end
+
+-- ==========================================
+-- RenderStepped 循环
+-- ==========================================
+RunService.RenderStepped:Connect(function()
+    -- [Fix 1] 只有在 Unified 模式 且 不在动画中 时才执行强制吸附
+    if Rubidium.State == "Unified" and not Rubidium.IsAnimating then
+        for _, win in ipairs(Rubidium.ActiveWindows) do
+            if not win.IsFullscreen then
+                local mainPos = win.Instance.Position
+                local sbWidth = win.Sidebar.Size.X.Offset
+                -- 实时吸附
+                win.Sidebar.Position = UDim2.new(
+                    mainPos.X.Scale, mainPos.X.Offset - sbWidth + 5, 
+                    mainPos.Y.Scale, mainPos.Y.Offset
+                )
+            end
+        end
+    end
+end)
+
+-- 保留辅助函数
 function Rubidium:SetFullscreen(win, isFull)
+    -- ... (保持之前的代码不变)
     local scale = self:GetScale()
     local targetSize = isFull and UDim2.new(1, 0, 1, 0) or UDim2.new(0, (self.Config.BaseSize.X - self.Config.SidebarWidth) * scale, 0, self.Config.BaseSize.Y * scale)
     local targetPos = isFull and UDim2.new(0, 0, 0, 0) or UDim2.new(0.5, (-self.Config.BaseSize.X/2 * scale) + (self.Config.SidebarWidth * scale), 0.5, -self.Config.BaseSize.Y/2 * scale)
@@ -318,47 +373,44 @@ function Rubidium:SetFullscreen(win, isFull)
     }):Play()
     
     if isFull then
-        -- 全屏时将 Sidebar 移出屏幕
-        TweenService:Create(win.Sidebar, TweenInfo.new(0.3), {
-             Position = UDim2.new(0, -200, 0, 0)
-        }):Play()
+        TweenService:Create(win.Sidebar, TweenInfo.new(0.3), { Position = UDim2.new(0, -200, 0, 0) }):Play()
     else
-        -- 退出全屏，恢复当前状态布局
         self:UpdateLayout()
     end
 end
 
-function Rubidium:ToggleState()
-    self.State = (self.State == "Unified") and "Detached" or "Unified"
-    self:UpdateLayout()
-end
-
--- RenderStepped 仅在 Unified 模式且非动画状态下保持吸附
-RunService.RenderStepped:Connect(function()
-    if Rubidium.State == "Unified" then
-        for _, win in ipairs(Rubidium.ActiveWindows) do
-            if not win.IsFullscreen then
-                local mainPos = win.Instance.Position
-                local sbWidth = win.Sidebar.Size.X.Offset
-                -- 简单的吸附
-                win.Sidebar.Position = UDim2.new(
-                    mainPos.X.Scale, mainPos.X.Offset - sbWidth + 5, 
-                    mainPos.Y.Scale, mainPos.Y.Offset
-                )
-            end
-        end
+function Rubidium:CheckSnap(sidebar)
+    local scale = self:GetScale()
+    local screenWidth = Camera.ViewportSize.X
+    local sbPos = sidebar.AbsolutePosition
+    
+    -- 简单的回弹修正，如果用户拖拽太快导致脱离轨道，这里可以纠正
+    local targetPos = nil
+    if sbPos.X < screenWidth/2 then
+         targetPos = UDim2.new(0, 10, 0.5, -sidebar.Size.Y.Offset/2) -- 左吸附修正
+    else
+         targetPos = UDim2.new(1, -sidebar.Size.X.Offset - 10, 0.5, -sidebar.Size.Y.Offset/2) -- 右吸附修正
     end
-end)
 
--- InitialLoad & CheckSnap 保持之前的实现 (为节省篇幅略去重复，实际代码应包含)
--- ... (保留 CheckSnap 和 InitialLoad) ...
-
-function Rubidium:CheckSnap(sidebar) -- (从上个版本复制回来)
-    -- ... CheckSnap 逻辑 ...
+    if targetPos then
+        TweenService:Create(sidebar, TweenInfo.new(0.3, Enum.EasingStyle.Back), {Position = targetPos}):Play()
+    end
 end
 
-function Rubidium:InitialLoad(main, side) -- (从上个版本复制回来)
-    -- ... InitialLoad 逻辑 ...
+function Rubidium:InitialLoad(main, side)
+    -- ... (保持之前的代码不变)
+    side.Position = UDim2.new(0, -150, 0.5, -side.Size.Y.Offset/2)
+    main.BackgroundTransparency = 1
+    
+    local t1 = TweenService:Create(side, TweenInfo.new(0.6, Enum.EasingStyle.Back), {
+        Position = UDim2.new(0.5, (-self.Config.BaseSize.X/2), 0.5, -self.Config.BaseSize.Y/2)
+    })
+    
+    t1:Play()
+    t1.Completed:Connect(function()
+        self:UpdateLayout()
+        TweenService:Create(main, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+    end)
 end
 
 return Rubidium
