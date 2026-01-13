@@ -417,274 +417,9 @@ function Rubidium:CreateWindow(options)
         if #self.Tabs == 0 then Activate() end
         table.insert(self.Tabs, tabObj)
 
-        -- ==========================================
-        -- Component System (Inside Tab)
-        -- ==========================================
+        -- [Component System Temporarily Removed]
+        -- 等待后续指令逐步添加
         
-        -- [Component] Button
-        function tabObj:CreateButton(text, callback)
-            callback = callback or function() end
-            
-            local btnFrame = Create("Frame", {
-                Name = "ButtonFrame",
-                BackgroundColor3 = Rubidium.Config.SidebarBg, -- Darker shade
-                Size = UDim2.new(1, -10, 0, 32 * scale),
-                Parent = tabPage
-            }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-                Create("UIStroke", {
-                    Color = Rubidium.Config.ThemeColor,
-                    Transparency = 0.8,
-                    Thickness = 1,
-                    ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-                })
-            })
-
-            local btn = Create("TextButton", {
-                Name = "Button",
-                BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 1, 0),
-                Font = Enum.Font.Gotham,
-                Text = text,
-                TextColor3 = Rubidium.Config.TextColor,
-                TextSize = 13 * scale,
-                Parent = btnFrame
-            })
-
-            -- Animation
-            btn.MouseButton1Down:Connect(function()
-                TweenService:Create(btnFrame, TweenInfo.new(0.1), {BackgroundColor3 = Rubidium.Config.ThemeColor}):Play()
-            end)
-            
-            btn.MouseButton1Up:Connect(function()
-                TweenService:Create(btnFrame, TweenInfo.new(0.2), {BackgroundColor3 = Rubidium.Config.SidebarBg}):Play()
-                callback()
-            end)
-            
-            btn.MouseLeave:Connect(function()
-                TweenService:Create(btnFrame, TweenInfo.new(0.2), {BackgroundColor3 = Rubidium.Config.SidebarBg}):Play()
-            end)
-            
-            return btn
-        end
-
-        -- [Component] Toggle
-        function tabObj:CreateToggle(text, default, callback)
-            default = default or false
-            callback = callback or function() end
-            
-            local toggled = default
-            
-            local toggleFrame = Create("Frame", {
-                Name = "ToggleFrame",
-                BackgroundColor3 = Rubidium.Config.SidebarBg,
-                Size = UDim2.new(1, -10, 0, 32 * scale),
-                Parent = tabPage
-            }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-                Create("UIStroke", {
-                    Color = Rubidium.Config.ThemeColor,
-                    Transparency = 0.9,
-                    Thickness = 1
-                }),
-                Create("TextLabel", {
-                    Name = "Label",
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 10, 0, 0),
-                    Size = UDim2.new(0.7, 0, 1, 0),
-                    Font = Enum.Font.Gotham,
-                    Text = text,
-                    TextColor3 = Rubidium.Config.TextColor,
-                    TextSize = 13 * scale,
-                    TextXAlignment = Enum.TextXAlignment.Left
-                })
-            })
-            
-            local indicator = Create("Frame", {
-                Name = "Indicator",
-                BackgroundColor3 = toggled and Rubidium.Config.ThemeColor or Color3.fromRGB(50, 50, 50),
-                Position = UDim2.new(1, -45 * scale, 0.5, -10 * scale),
-                Size = UDim2.new(0, 35 * scale, 0, 20 * scale),
-                Parent = toggleFrame
-            }, {
-                Create("UICorner", {CornerRadius = UDim.new(1, 0)})
-            })
-            
-            local circle = Create("Frame", {
-                Name = "Circle",
-                BackgroundColor3 = Color3.new(1,1,1),
-                Position = toggled and UDim2.new(1, -18 * scale, 0.5, -8 * scale) or UDim2.new(0, 2 * scale, 0.5, -8 * scale),
-                Size = UDim2.new(0, 16 * scale, 0, 16 * scale),
-                Parent = indicator
-            }, {
-                Create("UICorner", {CornerRadius = UDim.new(1, 0)})
-            })
-
-            local btn = Create("TextButton", {
-                BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 1, 0),
-                Text = "",
-                Parent = toggleFrame
-            })
-            
-            local function update()
-                local targetColor = toggled and Rubidium.Config.ThemeColor or Color3.fromRGB(50, 50, 50)
-                local targetPos = toggled and UDim2.new(1, -18 * scale, 0.5, -8 * scale) or UDim2.new(0, 2 * scale, 0.5, -8 * scale)
-                
-                TweenService:Create(indicator, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
-                TweenService:Create(circle, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = targetPos}):Play()
-                
-                callback(toggled)
-            end
-            
-            btn.MouseButton1Click:Connect(function()
-                toggled = not toggled
-                update()
-            end)
-            
-            -- Init call if default is true, but usually we just set visual state
-            if default then 
-                -- Just set visuals, avoid callback spam on init unless needed
-                -- update() -- Call update to ensure correct state visual
-            end
-            
-            return {
-                Set = function(self, val) 
-                    toggled = val 
-                    update() 
-                end
-            }
-        end
-        
-        -- [Component] Slider
-        function tabObj:CreateSlider(text, min, max, default, callback)
-            min = min or 0
-            max = max or 100
-            default = default or min
-            callback = callback or function() end
-            
-            local dragging = false
-            local value = default
-
-            local sliderFrame = Create("Frame", {
-                Name = "SliderFrame",
-                BackgroundColor3 = Rubidium.Config.SidebarBg,
-                Size = UDim2.new(1, -10, 0, 45 * scale),
-                Parent = tabPage
-            }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-                Create("TextLabel", {
-                    Name = "Label",
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 10, 0, 5),
-                    Size = UDim2.new(1, -20, 0, 15),
-                    Font = Enum.Font.Gotham,
-                    Text = text,
-                    TextColor3 = Rubidium.Config.TextColor,
-                    TextSize = 13 * scale,
-                    TextXAlignment = Enum.TextXAlignment.Left
-                }),
-                Create("TextLabel", {
-                    Name = "ValueLabel",
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(1, -60, 0, 5),
-                    Size = UDim2.new(0, 50, 0, 15),
-                    Font = Enum.Font.GothamBold,
-                    Text = tostring(default),
-                    TextColor3 = Rubidium.Config.ThemeColor,
-                    TextSize = 13 * scale,
-                    TextXAlignment = Enum.TextXAlignment.Right
-                })
-            })
-            
-            local bar = Create("Frame", {
-                Name = "Bar",
-                BackgroundColor3 = Color3.fromRGB(40, 40, 40),
-                Position = UDim2.new(0, 10, 0, 30 * scale),
-                Size = UDim2.new(1, -20, 0, 4 * scale),
-                Parent = sliderFrame
-            }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 2)})
-            })
-            
-            local fill = Create("Frame", {
-                Name = "Fill",
-                BackgroundColor3 = Rubidium.Config.ThemeColor,
-                Size = UDim2.new((default - min)/(max - min), 0, 1, 0),
-                Parent = bar
-            }, {
-                Create("UICorner", {CornerRadius = UDim.new(0, 2)})
-            })
-            
-            local trigger = Create("TextButton", {
-                BackgroundTransparency = 1,
-                Size = UDim2.new(1, 0, 1, 0),
-                Position = UDim2.new(0,0,0,-10), -- Make hit area larger
-                Text = "",
-                Parent = bar
-            })
-            
-            local valLabel = sliderFrame.ValueLabel
-            
-            local function update(input)
-                local posX = input.Position.X
-                local barAbsPos = bar.AbsolutePosition.X
-                local barAbsSize = bar.AbsoluteSize.X
-                
-                local percent = math.clamp((posX - barAbsPos) / barAbsSize, 0, 1)
-                value = math.floor(min + (max - min) * percent)
-                
-                TweenService:Create(fill, TweenInfo.new(0.05), {Size = UDim2.new(percent, 0, 1, 0)}):Play()
-                valLabel.Text = tostring(value)
-                callback(value)
-            end
-            
-            trigger.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    dragging = true
-                    update(input)
-                end
-            end)
-            
-            UserInputService.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    dragging = false
-                end
-            end)
-            
-            UserInputService.InputChanged:Connect(function(input)
-                if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-                    update(input)
-                end
-            end)
-            
-            return {
-                Set = function(self, val)
-                    value = math.clamp(val, min, max)
-                    local percent = (value - min) / (max - min)
-                    TweenService:Create(fill, TweenInfo.new(0.2), {Size = UDim2.new(percent, 0, 1, 0)}):Play()
-                    valLabel.Text = tostring(value)
-                    callback(value)
-                end
-            }
-        end
-
-        -- [Component] Label
-        function tabObj:CreateLabel(text)
-            local label = Create("TextLabel", {
-                Name = "Label",
-                BackgroundTransparency = 1,
-                Size = UDim2.new(1, -10, 0, 20 * scale),
-                Font = Enum.Font.Gotham,
-                Text = text,
-                TextColor3 = Rubidium.Config.SubTextColor,
-                TextSize = 13 * scale,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                Parent = tabPage
-            })
-            return label
-        end
-
         return tabObj
     end
 
@@ -724,51 +459,96 @@ function Rubidium:UpdateLayout()
             -- [Logic] 切换到 Unified 模式
             win.ToggleArrow.Visible = false 
             
-            -- 1. Reparent: 先将 Sidebar 放回 MainFrame
-            win.Sidebar.Parent = win.Instance
+            -- [Animation Logic Fix]
+            -- 不直接 Reparent，而是先计算 MainFrame 最终的位置，然后计算 Sidebar 应该去哪
             
-            -- 2. 设置 RightPatch 可见 (遮挡圆角)
-            if rightPatch then rightPatch.Visible = true end
-
-            -- 3. 动画目标
-            local targetSize = UDim2.new(0, bSize.X - sbWidth, 0, bSize.Y)
-            local targetPos = UDim2.new(0.5, (-bSize.X/2) + sbWidth, 0.5, -bSize.Y/2)
+            -- 1. MainFrame 的目标位置和大小
+            local mainTargetSize = UDim2.new(0, bSize.X - sbWidth, 0, bSize.Y)
+            local mainTargetPos = UDim2.new(0.5, (-bSize.X/2) + sbWidth, 0.5, -bSize.Y/2)
             
-            -- Sidebar 在 Unified 模式下相对于 MainFrame 的位置
-            -- 高度填满，宽度固定，位于左侧稍微重叠
-            local sbTargetSize = UDim2.new(0, sbWidth, 1, 0)
-            local sbTargetPos = UDim2.new(0, -sbWidth + 5, 0, 0)
+            -- 2. Sidebar 在 Unified 模式下相对于 MainFrame 的偏移
+            -- 它是 MainFrame 的子级，位置是 (-sbWidth + 5, 0)
+            -- 我们需要算出这个相对位置在屏幕上的绝对坐标
+            
+            -- 由于 MainFrame 也是在缩放和移动，我们很难直接拿到它的 AbsolutePosition (因为它是 Tween 的目标)
+            -- 我们可以通过视口大小计算出 MainFrame 的绝对目标位置
+            local vpSize = Camera.ViewportSize
+            local mainAbsX = (vpSize.X * 0.5) + ((-bSize.X/2) + sbWidth) -- 0.5 scale + offset
+            local mainAbsY = (vpSize.Y * 0.5) - (bSize.Y/2)
+            
+            -- Sidebar 的目标绝对位置
+            local sbAbsX = mainAbsX + (-sbWidth + 5)
+            local sbAbsY = mainAbsY
+            local finalAbsPos = UDim2.new(0, sbAbsX, 0, sbAbsY)
+            
+            local sbTargetSize = UDim2.new(0, sbWidth, 0, bSize.Y) -- 此时高度跟随 MainFrame
 
             -- 执行动画
             TweenService:Create(win.Instance, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                Position = targetPos,
-                Size = targetSize
+                Position = mainTargetPos,
+                Size = mainTargetSize
             }):Play()
 
             local tSb = TweenService:Create(win.Sidebar, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                Position = sbTargetPos,
+                Position = finalAbsPos,
                 Size = sbTargetSize
             })
             tSb:Play()
-            tSb.Completed:Connect(function() self.IsAnimating = false end)
+            
+            -- [Fix] 动画结束后再 Reparent，保证平滑
+            tSb.Completed:Connect(function() 
+                if self.State == "Unified" then
+                    -- 恢复父子关系
+                    win.Sidebar.Parent = win.Instance
+                    -- 恢复相对坐标
+                    win.Sidebar.Position = UDim2.new(0, -sbWidth + 5, 0, 0)
+                    win.Sidebar.Size = UDim2.new(0, sbWidth, 1, 0)
+                    
+                    -- 显示遮罩
+                    if rightPatch then rightPatch.Visible = true end
+                    
+                    -- [Fix Title] 调整标题位置
+                    local titleBar = win.Instance:FindFirstChild("TitleBar")
+                    if titleBar then
+                        local title = titleBar:FindFirstChild("Title")
+                        local subtitle = titleBar:FindFirstChild("Subtitle")
+                        if title then 
+                            TweenService:Create(title, TweenInfo.new(0.3), {Position = UDim2.new(0, 20 * scale, 0, 5 * scale)}):Play()
+                        end
+                        if subtitle then 
+                            TweenService:Create(subtitle, TweenInfo.new(0.3), {Position = UDim2.new(0, 20 * scale, 0, 22 * scale)}):Play()
+                        end
+                    end
+                end
+                self.IsAnimating = false 
+            end)
 
         else
             -- [Logic] 切换到 Detached 模式
             win.ToggleArrow.Visible = true 
             
-            -- 1. Reparent: 将 Sidebar 移出到 ScreenGui (或原父级)
-            -- 为了保证动画连贯，我们需要先计算绝对位置，转换坐标系，再 Reparent
+            -- [Logic] 分离时，Sidebar 已经在 MainFrame 里，我们需要先把它拿出来放到 ScreenGui
+            -- 并计算出它在屏幕上的绝对位置，让视觉上没有跳变
+            
             local absPos = win.Sidebar.AbsolutePosition
             local absSize = win.Sidebar.AbsoluteSize
             
-            -- 设置为 ScreenGui 的子级
+            -- 1. Reparent to ScreenGui
             win.Sidebar.Parent = screenGui 
-            -- 临时保持位置不变，避免跳变 (Position 使用 Offset)
             win.Sidebar.Position = UDim2.new(0, absPos.X, 0, absPos.Y)
             win.Sidebar.Size = UDim2.new(0, absSize.X, 0, absSize.Y)
 
             -- 2. 隐藏 RightPatch (恢复圆角)
             if rightPatch then rightPatch.Visible = false end
+            
+            -- [Fix Title] 恢复标题位置
+            local titleBar = win.Instance:FindFirstChild("TitleBar")
+            if titleBar then
+                local title = titleBar:FindFirstChild("Title")
+                local subtitle = titleBar:FindFirstChild("Subtitle")
+                if title then title.Position = UDim2.new(0, 10 * scale, 0, 5 * scale) end
+                if subtitle then subtitle.Position = UDim2.new(0, 10 * scale, 0, 22 * scale) end
+            end
 
             -- 3. 动画目标
             local targetSize = UDim2.new(0, bSize.X * 0.9, 0, bSize.Y * 0.9)
