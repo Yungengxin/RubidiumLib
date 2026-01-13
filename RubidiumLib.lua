@@ -256,6 +256,7 @@ function Rubidium:CreateWindow(options)
         HorizontalAlignment = Enum.HorizontalAlignment.Right
     })
 
+    local controlBtns = {}
     local function addBtn(id, icon, order, fn)
         local btn = Create("ImageButton", {
             Name = id,
@@ -267,6 +268,7 @@ function Rubidium:CreateWindow(options)
             Parent = controls
         })
         btn.MouseButton1Click:Connect(fn)
+        controlBtns[id] = btn
     end
 
     addBtn("Detach", "rbxassetid://6031094678", 1, function() self:ToggleState() end) 
@@ -283,6 +285,7 @@ function Rubidium:CreateWindow(options)
         Instance = mainFrame, 
         Sidebar = sidebarFrame, 
         ToggleArrow = toggleArrow, 
+        ControlBtns = controlBtns, -- Store buttons
         Scale = scale, 
         IsFullscreen = false,
         Tabs = {},
@@ -307,19 +310,31 @@ function Rubidium:CreateWindow(options)
     })
 
     -- [UI] Tab List Container (In Sidebar)
+    
+    -- [Visual] Divider Line
+    local divider = Create("Frame", {
+        Name = "Divider",
+        BackgroundColor3 = Color3.fromRGB(50, 50, 50),
+        BorderSizePixel = 0,
+        Position = UDim2.new(0.1, 0, 0, 50 * scale),
+        Size = UDim2.new(0.8, 0, 0, 1), -- Thin line
+        Parent = sidebarFrame,
+        ZIndex = 3
+    })
+
     local tabList = Create("ScrollingFrame", {
         Name = "TabList",
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 0, 0, 50 * scale), -- Below AppIcon
-        Size = UDim2.new(1, 0, 1, -50 * scale),
-        ScrollBarThickness = 2,
-        ScrollBarImageColor3 = self.Config.ThemeColor,
+        Position = UDim2.new(0, 0, 0, 60 * scale), -- Below Divider
+        Size = UDim2.new(1, 0, 1, -60 * scale),
+        ScrollBarThickness = 0, -- Hide scrollbar for clean look
         CanvasSize = UDim2.new(0, 0, 0, 0),
-        Parent = sidebarFrame
+        Parent = sidebarFrame,
+        ZIndex = 3
     }, {
         Create("UIListLayout", {
             SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 5),
+            Padding = UDim.new(0, 10),
             HorizontalAlignment = Enum.HorizontalAlignment.Center
         })
     })
@@ -328,36 +343,29 @@ function Rubidium:CreateWindow(options)
     function windowObj:CreateTab(name, iconId)
         local tabId = #self.Tabs + 1
         
-        -- 1. Create Tab Button (Sidebar)
-        local tabBtn = Create("TextButton", {
+        -- 1. Create Tab Button (Sidebar) - Icon Only
+        local tabBtn = Create("ImageButton", {
             Name = name .. "_Btn",
-            BackgroundColor3 = Rubidium.Config.SidebarBg, -- Default
+            BackgroundColor3 = Rubidium.Config.SidebarBg, 
             BackgroundTransparency = 1,
-            Size = UDim2.new(0.8, 0, 0, 30 * scale),
-            Text = "",
+            Size = UDim2.new(0, 40 * scale, 0, 40 * scale), -- Square
+            Image = "", -- Container
             AutoButtonColor = false,
             Parent = tabList,
-            LayoutOrder = tabId
+            LayoutOrder = tabId,
+            ZIndex = 4
         }, {
-            Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-            Create("TextLabel", {
-                Name = "Title",
-                BackgroundTransparency = 1,
-                Position = UDim2.new(0, 30 * scale, 0, 0),
-                Size = UDim2.new(1, -30 * scale, 1, 0),
-                Font = Enum.Font.GothamMedium,
-                Text = name,
-                TextColor3 = Rubidium.Config.SubTextColor,
-                TextSize = 12 * scale,
-                TextXAlignment = Enum.TextXAlignment.Left
-            }),
+            Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
+            -- Center Icon
             Create("ImageLabel", {
                 Name = "Icon",
                 BackgroundTransparency = 1,
-                Position = UDim2.new(0, 5 * scale, 0.5, -8 * scale),
-                Size = UDim2.new(0, 16 * scale, 0, 16 * scale),
-                Image = iconId or "rbxassetid://6031094678", -- Default Icon
-                ImageColor3 = Rubidium.Config.SubTextColor
+                AnchorPoint = Vector2.new(0.5, 0.5),
+                Position = UDim2.new(0.5, 0, 0.5, 0),
+                Size = UDim2.new(0, 24 * scale, 0, 24 * scale),
+                Image = iconId or "rbxassetid://6031094678", 
+                ImageColor3 = Rubidium.Config.SubTextColor,
+                ZIndex = 5
             })
         })
 
@@ -397,7 +405,6 @@ function Rubidium:CreateWindow(options)
             -- Deactivate old
             if self.CurrentTab then
                 local old = self.CurrentTab
-                TweenService:Create(old.Button.Title, TweenInfo.new(0.2), {TextColor3 = Rubidium.Config.SubTextColor}):Play()
                 TweenService:Create(old.Button.Icon, TweenInfo.new(0.2), {ImageColor3 = Rubidium.Config.SubTextColor}):Play()
                 TweenService:Create(old.Button, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
                 old.Page.Visible = false
@@ -406,7 +413,6 @@ function Rubidium:CreateWindow(options)
             -- Activate new
             self.CurrentTab = tabObj
             tabObj.Page.Visible = true
-            TweenService:Create(tabObj.Button.Title, TweenInfo.new(0.2), {TextColor3 = Rubidium.Config.ThemeColor}):Play()
             TweenService:Create(tabObj.Button.Icon, TweenInfo.new(0.2), {ImageColor3 = Rubidium.Config.ThemeColor}):Play()
             TweenService:Create(tabObj.Button, TweenInfo.new(0.2), {BackgroundTransparency = 0.9}):Play() -- Light highlight
         end
@@ -459,6 +465,13 @@ function Rubidium:UpdateLayout()
             -- [Logic] 切换到 Unified 模式
             win.ToggleArrow.Visible = false 
             
+            -- [UI] 恢复按钮显示状态
+            if win.ControlBtns["Fullscreen"] then win.ControlBtns["Fullscreen"].Visible = true end
+            if win.ControlBtns["Detach"] then 
+                win.ControlBtns["Detach"].LayoutOrder = 1 -- Reset position
+                win.ControlBtns["Detach"].Image = "rbxassetid://6031094678" -- Detach Icon
+            end
+
             -- [Animation Logic Fix]
             -- 不直接 Reparent，而是先计算 MainFrame 最终的位置，然后计算 Sidebar 应该去哪
             
@@ -477,6 +490,7 @@ function Rubidium:UpdateLayout()
             local mainAbsY = (vpSize.Y * 0.5) - (bSize.Y/2)
             
             -- Sidebar 的目标绝对位置
+            -- [Adjustment] 微调Y轴偏移，确保对齐
             local sbAbsX = mainAbsX + (-sbWidth + 5)
             local sbAbsY = mainAbsY
             local finalAbsPos = UDim2.new(0, sbAbsX, 0, sbAbsY)
@@ -526,6 +540,17 @@ function Rubidium:UpdateLayout()
         else
             -- [Logic] 切换到 Detached 模式
             win.ToggleArrow.Visible = true 
+            
+            -- [UI] 隐藏全屏按钮，移动分离按钮
+            if win.ControlBtns["Fullscreen"] then win.ControlBtns["Fullscreen"].Visible = false end
+            if win.ControlBtns["Detach"] then 
+                win.ControlBtns["Detach"].LayoutOrder = 2 -- Move to Fullscreen slot
+                win.ControlBtns["Detach"].Image = "rbxassetid://6031094678" -- Keep Detach Icon (or change to Merge icon if preferred?)
+                -- User said: "left merge button moves to fullscreen button position... converts to detach button"
+                -- Wait, user said "from detached back to merged, merge button converts to detach button".
+                -- So in Detached mode, it should be a "Merge" button conceptually, but user calls it "left merge button".
+                -- Let's stick to the button logic: Detach button toggles state.
+            end
             
             -- [Logic] 分离时，Sidebar 已经在 MainFrame 里，我们需要先把它拿出来放到 ScreenGui
             -- 并计算出它在屏幕上的绝对位置，让视觉上没有跳变
@@ -587,28 +612,59 @@ end
 
 function Rubidium:SetFullscreen(win, isFull)
     local scale = self:GetScale()
-    local viewport = Camera.ViewportSize
+    local sbWidth = self.Config.SidebarWidth * scale
     
     if not isFull then
         self:UpdateLayout()
+        -- Restore buttons
+        if self.State == "Unified" then
+            if win.ControlBtns["Detach"] then win.ControlBtns["Detach"].Visible = true end
+        end
         return
     end
 
-    -- 全屏模式逻辑
-    local targetSize = UDim2.new(1, 0, 1, 0)
-    local targetPos = UDim2.new(0, 0, 0, 0)
+    -- Fullscreen Logic
+    -- User Request: Unified mode fullscreen should KEEP sidebar
     
-    local t = TweenService:Create(win.Instance, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-        Size = targetSize,
-        Position = targetPos
-    })
-    t:Play()
-    
-    -- 全屏时隐藏 Sidebar
-    local sideT = TweenService:Create(win.Sidebar, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-        Position = UDim2.new(0, -150 * scale, 0, 0) -- 移出屏幕
-    })
-    sideT:Play()
+    if self.State == "Unified" then
+        -- 1. Sidebar fills left edge
+        local sbTargetPos = UDim2.new(0, 0, 0, 0)
+        local sbTargetSize = UDim2.new(0, sbWidth, 1, 0)
+        
+        -- 2. MainFrame fills the rest
+        local mainTargetPos = UDim2.new(0, sbWidth, 0, 0)
+        local mainTargetSize = UDim2.new(1, -sbWidth, 1, 0)
+        
+        TweenService:Create(win.Sidebar, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Position = sbTargetPos,
+            Size = sbTargetSize
+        }):Play()
+        
+        TweenService:Create(win.Instance, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Position = mainTargetPos,
+            Size = mainTargetSize
+        }):Play()
+
+        -- Hide Detach button in fullscreen to prevent state confusion
+        if win.ControlBtns["Detach"] then win.ControlBtns["Detach"].Visible = false end
+
+    else
+        -- Detached Fullscreen (Fallback if triggered)
+        -- Just maximize main frame, hide sidebar? 
+        -- User said button is hidden, so this shouldn't happen often.
+        local targetSize = UDim2.new(1, 0, 1, 0)
+        local targetPos = UDim2.new(0, 0, 0, 0)
+        
+        TweenService:Create(win.Instance, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Size = targetSize,
+            Position = targetPos
+        }):Play()
+        
+        -- Move sidebar out of view
+        TweenService:Create(win.Sidebar, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Position = UDim2.new(0, -200 * scale, 0, 0)
+        }):Play()
+    end
 end
 
 function Rubidium:CheckSnap(sidebar)
