@@ -173,13 +173,19 @@ function Rubidium:CreateWindow(options)
         ClipsDescendants = false -- 允许子元素(如侧边栏)在动画时超出边界
     }, {
         Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-        -- [New] Glow Stroke for MainFrame
-        Create("UIStroke", {
+        -- [New] True Glow Effect (ImageLabel with SliceCenter)
+        -- 使用 9-slice 图片来实现向外发散的柔和阴影/光晕
+        Create("ImageLabel", {
             Name = "Glow",
-            Thickness = 2,
-            Transparency = 0.5,
-            Color = self.Config.GlowColor,
-            ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, -15, 0, -15), -- 向外扩张，覆盖边缘
+            Size = UDim2.new(1, 30, 1, 30),
+            ZIndex = 0, -- 在背景之下
+            Image = "rbxassetid://5028857472", -- 这是一个通用的柔和阴影/光晕纹理
+            ImageColor3 = self.Config.GlowColor,
+            ScaleType = Enum.ScaleType.Slice,
+            SliceCenter = Rect.new(24, 24, 276, 276),
+            ImageTransparency = 0.5
         })
     })
 
@@ -193,14 +199,19 @@ function Rubidium:CreateWindow(options)
         ZIndex = 2
     }, {
         Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-        -- [New] Glow Stroke for Sidebar
-        Create("UIStroke", {
+        -- [New] True Glow Effect for Sidebar
+        Create("ImageLabel", {
             Name = "Glow",
-            Thickness = 2,
-            Transparency = 0.5,
-            Color = self.Config.GlowColor,
-            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-            Enabled = false -- 初始 Unified 模式下 MainFrame 处理整体发光
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, -15, 0, -15),
+            Size = UDim2.new(1, 30, 1, 30),
+            ZIndex = 0,
+            Image = "rbxassetid://5028857472",
+            ImageColor3 = self.Config.GlowColor,
+            ScaleType = Enum.ScaleType.Slice,
+            SliceCenter = Rect.new(24, 24, 276, 276),
+            ImageTransparency = 0.5,
+            Visible = false -- 初始 Unified 模式下 MainFrame 处理整体发光
         }),
         Create("ImageLabel", {
             Name = "AppIcon",
@@ -686,17 +697,17 @@ end
         if not mainGlow or not sbGlow then return end
 
         if self.State == "Unified" and not self.IsAnimating then
-             mainGlow.Enabled = true
-             sbGlow.Enabled = false
-             mainGlow.Transparency = 0.5
-             mainGlow.Color = self.Config.GlowColor
+             mainGlow.Visible = true
+             sbGlow.Visible = false
+             mainGlow.ImageTransparency = 0.5
+             mainGlow.ImageColor3 = self.Config.GlowColor
         elseif self.State == "Detached" and not self.IsAnimating then
-             mainGlow.Enabled = true
-             sbGlow.Enabled = true
-             mainGlow.Transparency = 0.5
-             sbGlow.Transparency = 0.5
-             mainGlow.Color = self.Config.GlowColor
-             sbGlow.Color = self.Config.GlowColor
+             mainGlow.Visible = true
+             sbGlow.Visible = true
+             mainGlow.ImageTransparency = 0.5
+             sbGlow.ImageTransparency = 0.5
+             mainGlow.ImageColor3 = self.Config.GlowColor
+             sbGlow.ImageColor3 = self.Config.GlowColor
         end
     end
 
@@ -728,13 +739,13 @@ end
                     local targetTrans = 0.2 + (0.6 * alpha)
                     local targetColor = Rubidium.Config.GlowColor:Lerp(Color3.new(0.8, 0.9, 1), alpha) -- 变白/淡
                     
-                    mainGlow.Enabled = true
-                    sbGlow.Enabled = true
+                    mainGlow.Visible = true
+                    sbGlow.Visible = true
                     
-                    mainGlow.Transparency = targetTrans
-                    sbGlow.Transparency = targetTrans
-                    mainGlow.Color = targetColor
-                    sbGlow.Color = targetColor
+                    mainGlow.ImageTransparency = targetTrans
+                    sbGlow.ImageTransparency = targetTrans
+                    mainGlow.ImageColor3 = targetColor
+                    sbGlow.ImageColor3 = targetColor
                 end
             else
                  -- 非动画期间保持静态光晕状态
