@@ -63,6 +63,13 @@ function Rubidium:MakeDraggable(target, draggingPart)
     local dragging, dragInput, dragStart, startPos
     
     local function update(input)
+        -- [Fix] 全屏模式下禁止拖动
+        for _, win in pairs(self.ActiveWindows) do
+            if win.Instance == target or win.Sidebar == target then
+                if win.IsFullscreen then return end
+            end
+        end
+
         local delta = input.Position - dragStart
         local scale = self:GetScale()
         
@@ -100,6 +107,13 @@ function Rubidium:MakeDraggable(target, draggingPart)
     end
 
     draggingPart.InputBegan:Connect(function(input)
+        -- [Fix] 全屏模式下禁止拖动
+        for _, win in pairs(self.ActiveWindows) do
+            if win.IsFullscreen and (win.Instance == target or win.Sidebar == target) then
+                return
+            end
+        end
+
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
@@ -479,47 +493,22 @@ function Rubidium:UpdateLayout()
             local mainTargetSize = UDim2.new(0, bSize.X - sbWidth, 0, bSize.Y)
             local mainTargetPos = UDim2.new(0.5, (-bSize.X/2) + sbWidth, 0.5, -bSize.Y/2)
             
-            -- 2. Sidebar 在 Unified 模式下相对于 MainFrame 的偏移
-            -- 它是 MainFrame 的子级，位置是 (-sbWidth + 5, 0)
-            -- 我们需要算出这个相对位置在屏幕上的绝对坐标
-            
-            -- 由于 MainFrame 也是在缩放和移动，我们很难直接拿到它的 AbsolutePosition (因为它是 Tween 的目标)
-            -- 我们可以通过视口大小计算出 MainFrame 的绝对目标位置
-            -- [Fix] 使用 ScreenGui.AbsoluteSize 修复 TopBar 偏移问题
-            local guiSize = screenGui.AbsoluteSize
-            local mainAbsX = (guiSize.X * 0.5) + ((-bSize.X/2) + sbWidth) 
-            local mainAbsY = (guiSize.Y * 0.5) - (bSize.Y/2)
-            
-            -- Sidebar 的目标绝对位置
-            -- [Adjustment] 微调Y轴偏移，确保对齐
-            local sbAbsX = mainAbsX + (-sbWidth + 5)
-            local sbAbsY = mainAbsY
-            local finalAbsPos = UDim2.new(0, sbAbsX, 0, sbAbsY)
-            
-            local sbTargetSize = UDim2.new(0, sbWidth, 0, bSize.Y) -- 此时高度跟随 MainFrame
+            if win.Sidebar.Parent == win.Instance then
+                -- [Fix] 已经是父子关系 (如从全屏 Unified 返回)
+                -- 直接 Tween 相对坐标，无需绝对坐标转换
+                TweenService:Create(win.Instance, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Position = mainTargetPos,
+                    Size = mainTargetSize
+                }):Play()
 
-            -- 执行动画
-            TweenService:Create(win.Instance, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                Position = mainTargetPos,
-                Size = mainTargetSize
-            }):Play()
-
-            local tSb = TweenService:Create(win.Sidebar, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                Position = finalAbsPos,
-                Size = sbTargetSize
-            })
-            tSb:Play()
-            
-            -- [Fix] 动画结束后再 Reparent，保证平滑
-            tSb.Completed:Connect(function() 
-                if self.State == "Unified" then
-                    -- 恢复父子关系
-                    win.Sidebar.Parent = win.Instance
-                    -- 恢复相对坐标
-                    win.Sidebar.Position = UDim2.new(0, -sbWidth + 5, 0, 0)
-                    win.Sidebar.Size = UDim2.new(0, sbWidth, 1, 0)
-                    
-                    -- 显示遮罩
+                local tSb = TweenService:Create(win.Sidebar, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(0, -sbWidth + 5, 0, 0), -- 恢复重叠偏移
+                    Size = UDim2.new(0, sbWidth, 1, 0)
+                })
+                tSb:Play()
+                
+                tSb.Completed:Connect(function() 
+                    self.IsAnimating = false 
                     if rightPatch then rightPatch.Visible = true end
                     
                     -- [Fix Title] 调整标题位置
@@ -534,9 +523,68 @@ function Rubidium:UpdateLayout()
                             TweenService:Create(subtitle, TweenInfo.new(0.3), {Position = UDim2.new(0, 20 * scale, 0, 22 * scale)}):Play()
                         end
                     end
-                end
-                self.IsAnimating = false 
-            end)
+                end)
+            else
+                -- [Logic] Detached -> Unified (Sidebar 还在 ScreenGui)
+                -- 2. Sidebar 在 Unified 模式下相对于 MainFrame 的偏移
+                -- 它是 MainFrame 的子级，位置是 (-sbWidth + 5, 0)
+                -- 我们需要算出这个相对位置在屏幕上的绝对坐标
+                
+                -- 由于 MainFrame 也是在缩放和移动，我们很难直接拿到它的 AbsolutePosition (因为它是 Tween 的目标)
+                -- 我们可以通过视口大小计算出 MainFrame 的绝对目标位置
+                -- [Fix] 使用 ScreenGui.AbsoluteSize 修复 TopBar 偏移问题
+                local guiSize = screenGui.AbsoluteSize
+                local mainAbsX = (guiSize.X * 0.5) + ((-bSize.X/2) + sbWidth) 
+                local mainAbsY = (guiSize.Y * 0.5) - (bSize.Y/2)
+                
+                -- Sidebar 的目标绝对位置
+                -- [Adjustment] 微调Y轴偏移，确保对齐
+                local sbAbsX = mainAbsX + (-sbWidth + 5)
+                local sbAbsY = mainAbsY
+                local finalAbsPos = UDim2.new(0, sbAbsX, 0, sbAbsY)
+                
+                local sbTargetSize = UDim2.new(0, sbWidth, 0, bSize.Y) -- 此时高度跟随 MainFrame
+
+                -- 执行动画
+                TweenService:Create(win.Instance, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Position = mainTargetPos,
+                    Size = mainTargetSize
+                }):Play()
+
+                local tSb = TweenService:Create(win.Sidebar, TweenInfo.new(self.Config.AnimSpeed, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                    Position = finalAbsPos,
+                    Size = sbTargetSize
+                })
+                tSb:Play()
+                
+                -- [Fix] 动画结束后再 Reparent，保证平滑
+                tSb.Completed:Connect(function() 
+                    if self.State == "Unified" then
+                        -- 恢复父子关系
+                        win.Sidebar.Parent = win.Instance
+                        -- 恢复相对坐标
+                        win.Sidebar.Position = UDim2.new(0, -sbWidth + 5, 0, 0)
+                        win.Sidebar.Size = UDim2.new(0, sbWidth, 1, 0)
+                        
+                        -- 显示遮罩
+                        if rightPatch then rightPatch.Visible = true end
+                        
+                        -- [Fix Title] 调整标题位置
+                        local titleBar = win.Instance:FindFirstChild("TitleBar")
+                        if titleBar then
+                            local title = titleBar:FindFirstChild("Title")
+                            local subtitle = titleBar:FindFirstChild("Subtitle")
+                            if title then 
+                                TweenService:Create(title, TweenInfo.new(0.3), {Position = UDim2.new(0, 20 * scale, 0, 5 * scale)}):Play()
+                            end
+                            if subtitle then 
+                                TweenService:Create(subtitle, TweenInfo.new(0.3), {Position = UDim2.new(0, 20 * scale, 0, 22 * scale)}):Play()
+                            end
+                        end
+                    end
+                    self.IsAnimating = false 
+                end)
+            end
 
         else
             -- [Logic] 切换到 Detached 模式
@@ -628,11 +676,15 @@ function Rubidium:SetFullscreen(win, isFull)
     -- User Request: Unified mode fullscreen should KEEP sidebar
     
     if self.State == "Unified" then
-        -- 1. Sidebar fills left edge
-        local sbTargetPos = UDim2.new(0, 0, 0, 0)
+        -- [Fix] Unified Fullscreen Layout
+        -- MainFrame 偏移以避开 Sidebar，Sidebar 负向偏移贴边
+        
+        -- 1. Sidebar (Child of MainFrame)
+        -- Relative position: -sbWidth (Visual: 0 on screen)
+        local sbTargetPos = UDim2.new(0, -sbWidth, 0, 0)
         local sbTargetSize = UDim2.new(0, sbWidth, 1, 0)
         
-        -- 2. MainFrame fills the rest
+        -- 2. MainFrame (Fills rest of screen)
         local mainTargetPos = UDim2.new(0, sbWidth, 0, 0)
         local mainTargetSize = UDim2.new(1, -sbWidth, 1, 0)
         
@@ -646,7 +698,7 @@ function Rubidium:SetFullscreen(win, isFull)
             Size = mainTargetSize
         }):Play()
 
-        -- Hide Detach button in fullscreen to prevent state confusion
+        -- Hide Detach button in fullscreen
         if win.ControlBtns["Detach"] then win.ControlBtns["Detach"].Visible = false end
 
     else
