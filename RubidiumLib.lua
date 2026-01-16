@@ -44,7 +44,7 @@ local Rubidium = {
         TextColor = Color3.fromRGB(240, 240, 240),
         SubTextColor = Color3.fromRGB(150, 150, 150),
         AnimSpeed = 0.5, -- 稍微调慢一点让动画更明显
-        GlowColor = Color3.fromRGB(0, 170, 255), -- [New] 光晕颜色
+        GlowColor = Color3.fromRGB(130, 80, 255), -- [User Request] Purple/Blue-ish Glow
         BaseSize = Vector2.new(600, 380), 
         SidebarWidth = 80
     }
@@ -143,6 +143,54 @@ function Rubidium:MakeDraggable(target, draggingPart)
             update(input)
         end
     end)
+end
+
+-- ==========================================
+-- [Helper] Create Multi-Layer Glow
+-- ==========================================
+function Rubidium:CreateNeonGlow(parent, color)
+    -- 使用"洋葱皮"技术：多层透明度递减的 UIStroke 叠加，模拟高斯模糊
+    -- Layer 1: Core (Brightest, Thinnest)
+    Create("UIStroke", {
+        Name = "Neon_L1",
+        Parent = parent,
+        Thickness = 1,
+        Transparency = 0.1,
+        Color = color,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    })
+    
+    -- Layer 2: Mid (Softer)
+    -- 由于同一个 Frame 只能有一个 UIStroke，我们需要创建不可见的容器 Frame 放在后面
+    
+    local function addLayer(thickness, transp, name)
+        local layer = Create("Frame", {
+            Name = name,
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            Position = UDim2.new(0, 0, 0, 0),
+            Parent = parent,
+            ZIndex = 0 -- Behind parent content
+        }, {
+            Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
+            Create("UIStroke", {
+                Name = "Stroke",
+                Thickness = thickness,
+                Transparency = transp,
+                Color = color,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            })
+        })
+        return layer
+    end
+
+    -- 创建多层扩散
+    -- L2: Slightly wider
+    addLayer(2.5, 0.4, "Neon_L2")
+    -- L3: Wide diffusion
+    addLayer(4.5, 0.7, "Neon_L3")
+    -- L4: Very wide fainter glow
+    addLayer(7, 0.85, "Neon_L4")
 end
 
 -- ==========================================
@@ -752,47 +800,30 @@ function Rubidium:ToggleState()
 end
 
     function Rubidium:UpdateGlow(win)
-        -- [New] 动态光晕更新 (Double Layer)
+        -- [New] 动态光晕更新 (Multi-Layer)
         local mainBg = win.Instance:FindFirstChild("Background")
-        local mainGlowLayer = win.Instance:FindFirstChild("GlowLayer")
-        
         local sbBg = win.Sidebar:FindFirstChild("Background")
-        local sbGlowLayer = win.Sidebar:FindFirstChild("GlowLayer")
         
-        local mInner = mainBg and mainBg:FindFirstChild("GlowInner")
-        local mOuter = mainGlowLayer and mainGlowLayer:FindFirstChild("GlowOuter")
+        if not mainBg or not sbBg then return end
         
-        local sInner = sbBg and sbBg:FindFirstChild("GlowInner")
-        local sOuter = sbGlowLayer and sbGlowLayer:FindFirstChild("GlowOuter")
-        
-        if not mInner or not mOuter or not sInner or not sOuter then return end
+        local function setGlowState(root, visible)
+            local l1 = root:FindFirstChild("Neon_L1")
+            local l2 = root:FindFirstChild("Neon_L2")
+            local l3 = root:FindFirstChild("Neon_L3")
+            local l4 = root:FindFirstChild("Neon_L4")
+            
+            if l1 then l1.Enabled = visible end
+            if l2 then l2.Visible = visible end
+            if l3 then l3.Visible = visible end
+            if l4 then l4.Visible = visible end
+        end
 
         if self.State == "Unified" and not self.IsAnimating then
-             mInner.Enabled = true
-             mOuter.Enabled = true
-             sInner.Enabled = false
-             sOuter.Enabled = false
-             
-             mInner.Transparency = 0.2
-             mOuter.Transparency = 0.6
-             mInner.Color = self.Config.GlowColor
-             mOuter.Color = self.Config.GlowColor
-             
+             setGlowState(mainBg, true)
+             setGlowState(sbBg, false)
         elseif self.State == "Detached" and not self.IsAnimating then
-             mInner.Enabled = true
-             mOuter.Enabled = true
-             sInner.Enabled = true
-             sOuter.Enabled = true
-             
-             mInner.Transparency = 0.2
-             mOuter.Transparency = 0.6
-             mInner.Color = self.Config.GlowColor
-             mOuter.Color = self.Config.GlowColor
-             
-             sInner.Transparency = 0.2
-             sOuter.Transparency = 0.6
-             sInner.Color = self.Config.GlowColor
-             sOuter.Color = self.Config.GlowColor
+             setGlowState(mainBg, true)
+             setGlowState(sbBg, true)
         end
     end
 
@@ -803,19 +834,41 @@ end
         for _, win in pairs(Rubidium.ActiveWindows) do
             if Rubidium.IsAnimating then
                 local mainBg = win.Instance:FindFirstChild("Background")
-                local mainGlowLayer = win.Instance:FindFirstChild("GlowLayer")
-                
                 local sbBg = win.Sidebar:FindFirstChild("Background")
-                local sbGlowLayer = win.Sidebar:FindFirstChild("GlowLayer")
                 
-                local mInner = mainBg and mainBg:FindFirstChild("GlowInner")
-                local mOuter = mainGlowLayer and mainGlowLayer:FindFirstChild("GlowOuter")
-                
-                local sInner = sbBg and sbBg:FindFirstChild("GlowInner")
-                local sOuter = sbGlowLayer and sbGlowLayer:FindFirstChild("GlowOuter")
-                
-                if mInner and mOuter and sInner and sOuter then
-                    -- 计算 Sidebar 和 MainFrame 的距离
+                -- Helper to update layers
+                local function updateLayers(root, alpha)
+                     if not root then return end
+                     local l1 = root:FindFirstChild("Neon_L1")
+                     local l2 = root:FindFirstChild("Neon_L2")
+                     local l3 = root:FindFirstChild("Neon_L3")
+                     local l4 = root:FindFirstChild("Neon_L4")
+                     
+                     local targetColor = Rubidium.Config.GlowColor:Lerp(Color3.new(0.8, 0.8, 1), alpha)
+                     
+                     if l1 then 
+                        l1.Enabled = true
+                        l1.Transparency = 0.1 + (0.3 * alpha)
+                        l1.Color = targetColor
+                     end
+                     if l2 then 
+                        l2.Visible = true
+                        l2.Stroke.Transparency = 0.4 + (0.3 * alpha)
+                        l2.Stroke.Color = targetColor
+                     end
+                     if l3 then 
+                        l3.Visible = true
+                        l3.Stroke.Transparency = 0.7 + (0.2 * alpha)
+                        l3.Stroke.Color = targetColor
+                     end
+                     if l4 then 
+                        l4.Visible = true
+                        l4.Stroke.Transparency = 0.85 + (0.15 * alpha)
+                        l4.Stroke.Color = targetColor
+                     end
+                end
+
+                if mainBg and sbBg then
                     local sbPos = win.Sidebar.AbsolutePosition
                     local mainPos = win.Instance.AbsolutePosition
                     local dist = (Vector2.new(sbPos.X, sbPos.Y) - Vector2.new(mainPos.X, mainPos.Y)).Magnitude
@@ -823,34 +876,10 @@ end
                     local maxDist = 300
                     local alpha = math.clamp(dist / maxDist, 0, 1)
                     
-                    -- 动态调整
-                    -- Alpha 0 (近): 亮
-                    -- Alpha 1 (远): 暗/淡
-                    
-                    -- Inner Stroke: 始终保持较清晰，只是颜色变淡
-                    local inTrans = 0.2 + (0.4 * alpha) 
-                    
-                    -- Outer Stroke: 距离变远时几乎消失
-                    local outTrans = 0.6 + (0.4 * alpha)
-                    
-                    local targetColor = Rubidium.Config.GlowColor:Lerp(Color3.new(0.7, 0.7, 1), alpha) 
-                    
-                    mInner.Enabled = true; mOuter.Enabled = true
-                    sInner.Enabled = true; sOuter.Enabled = true
-                    
-                    mInner.Transparency = inTrans
-                    mOuter.Transparency = outTrans
-                    
-                    sInner.Transparency = inTrans
-                    sOuter.Transparency = outTrans
-                    
-                    mInner.Color = targetColor
-                    mOuter.Color = targetColor
-                    sInner.Color = targetColor
-                    sOuter.Color = targetColor
+                    updateLayers(mainBg, alpha)
+                    updateLayers(sbBg, alpha)
                 end
             else
-                 -- 非动画期间保持静态光晕状态
                  Rubidium:UpdateGlow(win)
             end
         end
