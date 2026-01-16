@@ -485,9 +485,10 @@ function Rubidium:UpdateLayout()
             
             -- 由于 MainFrame 也是在缩放和移动，我们很难直接拿到它的 AbsolutePosition (因为它是 Tween 的目标)
             -- 我们可以通过视口大小计算出 MainFrame 的绝对目标位置
-            local vpSize = Camera.ViewportSize
-            local mainAbsX = (vpSize.X * 0.5) + ((-bSize.X/2) + sbWidth) -- 0.5 scale + offset
-            local mainAbsY = (vpSize.Y * 0.5) - (bSize.Y/2)
+            -- [Fix] 使用 ScreenGui.AbsoluteSize 修复 TopBar 偏移问题
+            local guiSize = screenGui.AbsoluteSize
+            local mainAbsX = (guiSize.X * 0.5) + ((-bSize.X/2) + sbWidth) 
+            local mainAbsY = (guiSize.Y * 0.5) - (bSize.Y/2)
             
             -- Sidebar 的目标绝对位置
             -- [Adjustment] 微调Y轴偏移，确保对齐
