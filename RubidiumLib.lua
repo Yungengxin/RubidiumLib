@@ -164,7 +164,6 @@ function Rubidium:CreateWindow(options)
 
     -- MainFrame (容器)
     -- [Refactor] MainFrame 现在只是一个透明的容器，实际背景由 Background 子元素负责
-    -- 这样 Glow 可以作为 Background 的同级或父级元素而不被 Clip
     local mainFrame = Create("Frame", {
         Name = "MainFrame",
         BackgroundTransparency = 1, -- 容器透明
@@ -181,36 +180,15 @@ function Rubidium:CreateWindow(options)
         }, {
             Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
             
-            -- [New] Double Layer Neon Glow
-            -- Layer 1: Inner Sharp Stroke (Brightness Core)
-            Create("UIStroke", {
-                Name = "GlowInner",
-                Thickness = 1,
-                Transparency = 0.2, -- 较不透明，明亮
-                Color = self.Config.GlowColor,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-                Enabled = true
-            }),
-            -- Layer 2: Outer Soft Stroke (Diffusion Halo) - Needs a wrapper to stack strokes?
-            -- Roblox UIStroke per instance limit. 
-            -- Solution: Create a hidden frame behind Background just for the outer glow stroke.
-        }),
-        
-        -- [New] Outer Glow Layer (Behind Background)
-        Create("Frame", {
-            Name = "GlowLayer",
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 1, 0),
-            Position = UDim2.new(0, 0, 0, 0),
-            ZIndex = 0
-        }, {
-            Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-            Create("UIStroke", {
-                Name = "GlowOuter",
-                Thickness = 4, -- 更宽的扩散
-                Transparency = 0.6, -- 较透明，柔和
-                Color = self.Config.GlowColor,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            -- [New] LeftPatch: 用于合并时遮挡 MainFrame 左侧圆角
+            Create("Frame", {
+                Name = "LeftPatch",
+                BackgroundColor3 = self.Config.MainBg,
+                BorderSizePixel = 0,
+                Size = UDim2.new(0, 10, 1, 0),
+                Position = UDim2.new(0, -5, 0, 0), -- 盖在左边缘
+                ZIndex = 1,
+                Visible = true -- 初始 Unified 状态下可见
             })
         })
     })
@@ -224,7 +202,7 @@ function Rubidium:CreateWindow(options)
         Parent = mainFrame, 
         ZIndex = 2
     }, {
-        -- [New] Actual Background
+        -- [Refactor] 实际背景 Frame
         Create("Frame", {
             Name = "Background",
             BackgroundColor3 = self.Config.SidebarBg,
@@ -232,17 +210,6 @@ function Rubidium:CreateWindow(options)
             ZIndex = 2
         }, {
              Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-             
-             -- [New] Inner Glow
-             Create("UIStroke", {
-                Name = "GlowInner",
-                Thickness = 1,
-                Transparency = 0.2,
-                Color = self.Config.GlowColor,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-                Enabled = false
-             }),
-             
              Create("ImageLabel", {
                 Name = "AppIcon",
                 BackgroundTransparency = 1,
@@ -251,24 +218,6 @@ function Rubidium:CreateWindow(options)
                 Image = "rbxassetid://18867303038",
                 ImageColor3 = self.Config.ThemeColor,
                 ZIndex = 3
-            })
-        }),
-        
-        -- [New] Outer Glow Layer (Behind Background)
-        Create("Frame", {
-            Name = "GlowLayer",
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 1, 0),
-            ZIndex = 1 -- Sidebar Background is ZIndex 2
-        }, {
-            Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-            Create("UIStroke", {
-                Name = "GlowOuter",
-                Thickness = 4,
-                Transparency = 0.6,
-                Color = self.Config.GlowColor,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-                Enabled = false
             })
         })
     })
@@ -600,7 +549,7 @@ function Rubidium:UpdateLayout()
                     self.IsAnimating = false 
                     if rightPatch then rightPatch.Visible = true end
                     
-                    self:UpdateGlow(win) -- 确保动画结束更新光晕
+                    self:UpdatePatch(win, 0)
 
                     -- [Fix Title] 调整标题位置
                     local titleBar = win.Instance:FindFirstChild("TitleBar")
@@ -660,8 +609,8 @@ function Rubidium:UpdateLayout()
                         -- 显示遮罩
                         if rightPatch then rightPatch.Visible = true end
                         
-                        -- 更新光晕状态
-                        self:UpdateGlow(win)
+                        -- 更新 Patch
+                        self:UpdatePatch(win, 0)
                         
                         -- [Fix Title] 调整标题位置
                         local titleBar = win.Instance:FindFirstChild("TitleBar")
