@@ -149,48 +149,24 @@ end
 -- [Helper] Create Multi-Layer Glow
 -- ==========================================
 function Rubidium:CreateNeonGlow(parent, color)
-    -- 使用"洋葱皮"技术：多层透明度递减的 UIStroke 叠加，模拟高斯模糊
-    -- Layer 1: Core (Brightest, Thinnest)
-    Create("UIStroke", {
-        Name = "Neon_L1",
+    -- [User Request Match] 使用参考代码中的 Shader 逻辑 (rbxassetid://6906809185)
+    -- 这实际上是一个背景阴影/光晕图层，放置在 MainFrame/Sidebar 内容下方
+    
+    local shader = Create("ImageLabel", {
+        Name = "Shader", -- 保持与参考代码一致的命名习惯
+        BackgroundTransparency = 1,
+        ImageColor3 = color, -- 使用用户指定的光晕颜色 (紫色)
+        Size = UDim2.new(1.1, 0, 1.1, 0), -- 稍微比父级大一点，形成向外发散效果
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Image = "rbxassetid://6906809185", -- 核心素材
         Parent = parent,
-        Thickness = 1,
-        Transparency = 0.1,
-        Color = color,
-        ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        ZIndex = 0, -- 确保在背景下方 (Background ZIndex 应为 1 或更高)
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(99, 99, 99, 99) -- 经验值，针对此素材的常用 Slice
     })
     
-    -- Layer 2: Mid (Softer)
-    -- 由于同一个 Frame 只能有一个 UIStroke，我们需要创建不可见的容器 Frame 放在后面
-    
-    local function addLayer(thickness, transp, name)
-        local layer = Create("Frame", {
-            Name = name,
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 1, 0),
-            Position = UDim2.new(0, 0, 0, 0),
-            Parent = parent,
-            ZIndex = 0 -- Behind parent content
-        }, {
-            Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-            Create("UIStroke", {
-                Name = "Stroke",
-                Thickness = thickness,
-                Transparency = transp,
-                Color = color,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-            })
-        })
-        return layer
-    end
-
-    -- 创建多层扩散
-    -- L2: Slightly wider
-    addLayer(2.5, 0.4, "Neon_L2")
-    -- L3: Wide diffusion
-    addLayer(4.5, 0.7, "Neon_L3")
-    -- L4: Very wide fainter glow
-    addLayer(7, 0.85, "Neon_L4")
+    return shader
 end
 
 -- ==========================================
@@ -800,30 +776,24 @@ function Rubidium:ToggleState()
 end
 
     function Rubidium:UpdateGlow(win)
-        -- [New] 动态光晕更新 (Multi-Layer)
-        local mainBg = win.Instance:FindFirstChild("Background")
-        local sbBg = win.Sidebar:FindFirstChild("Background")
+        -- [New] 动态光晕更新 (Shader Logic)
+        local mainShader = win.Instance:FindFirstChild("Shader")
+        local sbShader = win.Sidebar:FindFirstChild("Shader")
         
-        if not mainBg or not sbBg then return end
+        if not mainShader or not sbShader then return end
         
-        local function setGlowState(root, visible)
-            local l1 = root:FindFirstChild("Neon_L1")
-            local l2 = root:FindFirstChild("Neon_L2")
-            local l3 = root:FindFirstChild("Neon_L3")
-            local l4 = root:FindFirstChild("Neon_L4")
-            
-            if l1 then l1.Enabled = visible end
-            if l2 then l2.Visible = visible end
-            if l3 then l3.Visible = visible end
-            if l4 then l4.Visible = visible end
-        end
-
         if self.State == "Unified" and not self.IsAnimating then
-             setGlowState(mainBg, true)
-             setGlowState(sbBg, false)
+             mainShader.Visible = true
+             sbShader.Visible = false
+             mainShader.ImageColor3 = self.Config.GlowColor
+             mainShader.ImageTransparency = 0 -- 核心不透明度，可调
         elseif self.State == "Detached" and not self.IsAnimating then
-             setGlowState(mainBg, true)
-             setGlowState(sbBg, true)
+             mainShader.Visible = true
+             sbShader.Visible = true
+             mainShader.ImageColor3 = self.Config.GlowColor
+             sbShader.ImageColor3 = self.Config.GlowColor
+             mainShader.ImageTransparency = 0
+             sbShader.ImageTransparency = 0
         end
     end
 
@@ -833,42 +803,11 @@ end
     RunService.RenderStepped:Connect(function()
         for _, win in pairs(Rubidium.ActiveWindows) do
             if Rubidium.IsAnimating then
-                local mainBg = win.Instance:FindFirstChild("Background")
-                local sbBg = win.Sidebar:FindFirstChild("Background")
+                local mainShader = win.Instance:FindFirstChild("Shader")
+                local sbShader = win.Sidebar:FindFirstChild("Shader")
                 
-                -- Helper to update layers
-                local function updateLayers(root, alpha)
-                     if not root then return end
-                     local l1 = root:FindFirstChild("Neon_L1")
-                     local l2 = root:FindFirstChild("Neon_L2")
-                     local l3 = root:FindFirstChild("Neon_L3")
-                     local l4 = root:FindFirstChild("Neon_L4")
-                     
-                     local targetColor = Rubidium.Config.GlowColor:Lerp(Color3.new(0.8, 0.8, 1), alpha)
-                     
-                     if l1 then 
-                        l1.Enabled = true
-                        l1.Transparency = 0.1 + (0.3 * alpha)
-                        l1.Color = targetColor
-                     end
-                     if l2 then 
-                        l2.Visible = true
-                        l2.Stroke.Transparency = 0.4 + (0.3 * alpha)
-                        l2.Stroke.Color = targetColor
-                     end
-                     if l3 then 
-                        l3.Visible = true
-                        l3.Stroke.Transparency = 0.7 + (0.2 * alpha)
-                        l3.Stroke.Color = targetColor
-                     end
-                     if l4 then 
-                        l4.Visible = true
-                        l4.Stroke.Transparency = 0.85 + (0.15 * alpha)
-                        l4.Stroke.Color = targetColor
-                     end
-                end
-
-                if mainBg and sbBg then
+                if mainShader and sbShader then
+                    -- 计算距离
                     local sbPos = win.Sidebar.AbsolutePosition
                     local mainPos = win.Instance.AbsolutePosition
                     local dist = (Vector2.new(sbPos.X, sbPos.Y) - Vector2.new(mainPos.X, mainPos.Y)).Magnitude
@@ -876,8 +815,18 @@ end
                     local maxDist = 300
                     local alpha = math.clamp(dist / maxDist, 0, 1)
                     
-                    updateLayers(mainBg, alpha)
-                    updateLayers(sbBg, alpha)
+                    -- 动态调整
+                    -- 分离时（Alpha -> 1）：变淡
+                    -- 合并时（Alpha -> 0）：变亮（不透明）
+                    local targetTrans = 0 + (0.5 * alpha) 
+                    
+                    mainShader.Visible = true
+                    sbShader.Visible = true
+                    
+                    mainShader.ImageTransparency = targetTrans
+                    sbShader.ImageTransparency = targetTrans
+                    mainShader.ImageColor3 = Rubidium.Config.GlowColor
+                    sbShader.ImageColor3 = Rubidium.Config.GlowColor
                 end
             else
                  Rubidium:UpdateGlow(win)
