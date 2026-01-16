@@ -164,75 +164,94 @@ function Rubidium:CreateWindow(options)
     })
 
     -- MainFrame (容器)
+    -- [Refactor] MainFrame 现在只是一个透明的容器，实际背景由 Background 子元素负责
+    -- 这样 Glow 可以作为 Background 的同级或父级元素而不被 Clip
     local mainFrame = Create("Frame", {
         Name = "MainFrame",
-        BackgroundColor3 = self.Config.MainBg,
+        BackgroundTransparency = 1, -- 容器透明
         Size = UDim2.new(0, currentSize.X - sbWidth, 0, currentSize.Y),
         Position = UDim2.new(0.5, (-currentSize.X/2) + sbWidth, 0.5, -currentSize.Y/2),
         Parent = screenGui,
-        ClipsDescendants = false -- 允许子元素(如侧边栏)在动画时超出边界
+        ClipsDescendants = false 
     }, {
-        Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-        -- [New] True Glow Effect (ImageLabel with SliceCenter)
-        -- 使用 9-slice 图片来实现向外发散的柔和阴影/光晕
+        -- [New] Glow Image (Back Layer)
         Create("ImageLabel", {
             Name = "Glow",
             BackgroundTransparency = 1,
-            Position = UDim2.new(0, -15, 0, -15), -- 向外扩张，覆盖边缘
-            Size = UDim2.new(1, 30, 1, 30),
-            ZIndex = 0, -- 在背景之下
-            Image = "rbxassetid://5028857472", -- 这是一个通用的柔和阴影/光晕纹理
+            Position = UDim2.new(0, -35, 0, -35), -- 增加扩散范围
+            Size = UDim2.new(1, 70, 1, 70),
+            ZIndex = 0, 
+            Image = "rbxassetid://5028857472", 
             ImageColor3 = self.Config.GlowColor,
             ScaleType = Enum.ScaleType.Slice,
             SliceCenter = Rect.new(24, 24, 276, 276),
             ImageTransparency = 0.5
+        }),
+        -- [New] Actual Background (Front Layer)
+        Create("Frame", {
+            Name = "Background",
+            BackgroundColor3 = self.Config.MainBg,
+            Size = UDim2.new(1, 0, 1, 0),
+            ZIndex = 1
+        }, {
+            Create("UICorner", {CornerRadius = UDim.new(0, 8)})
         })
     })
 
     -- Sidebar (初始父级设为 mainFrame)
     local sidebarFrame = Create("Frame", {
         Name = "Sidebar",
-        BackgroundColor3 = self.Config.SidebarBg,
-        Size = UDim2.new(0, sbWidth, 1, 0), -- 高度填满 MainFrame
-        Position = UDim2.new(0, -sbWidth + 5, 0, 0), -- 初始位置在 MainFrame 左侧重叠
-        Parent = mainFrame, -- [Change] 初始作为子级
+        BackgroundTransparency = 1, -- 容器透明
+        Size = UDim2.new(0, sbWidth, 1, 0), 
+        Position = UDim2.new(0, -sbWidth + 5, 0, 0), 
+        Parent = mainFrame, 
         ZIndex = 2
     }, {
-        Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-        -- [New] True Glow Effect for Sidebar
+        -- [New] Glow Image
         Create("ImageLabel", {
             Name = "Glow",
             BackgroundTransparency = 1,
-            Position = UDim2.new(0, -15, 0, -15),
-            Size = UDim2.new(1, 30, 1, 30),
+            Position = UDim2.new(0, -35, 0, -35),
+            Size = UDim2.new(1, 70, 1, 70),
             ZIndex = 0,
             Image = "rbxassetid://5028857472",
             ImageColor3 = self.Config.GlowColor,
             ScaleType = Enum.ScaleType.Slice,
             SliceCenter = Rect.new(24, 24, 276, 276),
             ImageTransparency = 0.5,
-            Visible = false -- 初始 Unified 模式下 MainFrame 处理整体发光
+            Visible = false 
         }),
-        Create("ImageLabel", {
-            Name = "AppIcon",
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0.5, -15 * scale, 0, 10 * scale),
-            Size = UDim2.new(0, 30 * scale, 0, 30 * scale),
-            Image = "rbxassetid://18867303038",
-            ImageColor3 = self.Config.ThemeColor
+        -- [New] Actual Background
+        Create("Frame", {
+            Name = "Background",
+            BackgroundColor3 = self.Config.SidebarBg,
+            Size = UDim2.new(1, 0, 1, 0),
+            ZIndex = 2
+        }, {
+             Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
+             Create("ImageLabel", {
+                Name = "AppIcon",
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0.5, -15 * scale, 0, 10 * scale),
+                Size = UDim2.new(0, 30 * scale, 0, 30 * scale),
+                Image = "rbxassetid://18867303038",
+                ImageColor3 = self.Config.ThemeColor,
+                ZIndex = 3
+            })
         })
     })
 
     -- [New] RightPatch: 用于遮挡侧边栏右侧圆角的补丁块
+    -- 需要移动到 Background 内部或者作为 Background 的同级并保证 ZIndex 正确
     local rightPatch = Create("Frame", {
         Name = "RightPatch",
         BackgroundColor3 = self.Config.SidebarBg,
         BorderSizePixel = 0,
         Size = UDim2.new(0, 10, 1, 0),
-        Position = UDim2.new(1, -5, 0, 0), -- 盖在 Sidebar 右边缘
-        Parent = sidebarFrame,
-        ZIndex = 2,
-        Visible = true -- 初始 Unified 状态下可见
+        Position = UDim2.new(1, -5, 0, 0), 
+        Parent = sidebarFrame:FindFirstChild("Background"), -- Parent to Background
+        ZIndex = 2, -- Same as Background
+        Visible = true 
     })
 
     -- ToggleArrow (保持不变)
@@ -244,17 +263,23 @@ function Rubidium:CreateWindow(options)
         Visible = false, 
         ZIndex = 0, 
         Image = "rbxassetid://6031091004", 
-        Parent = sidebarFrame
+        Parent = sidebarFrame -- Parent to container is fine, or move to background?
+                              -- ToggleArrow usually sticks out. Let's keep it on container for now, 
+                              -- but it might need to be on top of background.
     }, {
         Create("UICorner", {CornerRadius = UDim.new(0, 4)})
     })
+    
+    -- Fix ToggleArrow ZIndex to be above Glow but maybe below or above background?
+    toggleArrow.ZIndex = 3
 
-    -- TitleBar (细节调整)
+    -- TitleBar (Parent to MainFrame Container)
     local titleBar = Create("Frame", {
         Name = "TitleBar",
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 40 * scale),
-        Parent = mainFrame
+        Parent = mainFrame,
+        ZIndex = 5 -- Ensure on top
     }, {
         -- [Fix 3] 调整边距，从 20 改为 10，使其紧贴 UI 边缘
         Create("TextLabel", {
@@ -266,7 +291,8 @@ function Rubidium:CreateWindow(options)
             Text = title,
             TextColor3 = self.Config.TextColor,
             TextSize = 16 * scale,
-            TextXAlignment = Enum.TextXAlignment.Left
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 5
         }),
         Create("TextLabel", {
             Name = "Subtitle",
@@ -277,7 +303,8 @@ function Rubidium:CreateWindow(options)
             Text = subtitle,
             TextColor3 = self.Config.SubTextColor,
             TextSize = 12 * scale,
-            TextXAlignment = Enum.TextXAlignment.Left
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 5
         })
     })
 
@@ -361,7 +388,7 @@ function Rubidium:CreateWindow(options)
         BorderSizePixel = 0,
         Position = UDim2.new(0.1, 0, 0, 50 * scale),
         Size = UDim2.new(0.8, 0, 0, 1), -- Thin line
-        Parent = sidebarFrame,
+        Parent = sidebarFrame:FindFirstChild("Background"), -- Parent to Background
         ZIndex = 3
     })
 
@@ -372,7 +399,7 @@ function Rubidium:CreateWindow(options)
         Size = UDim2.new(1, 0, 1, -60 * scale),
         ScrollBarThickness = 0, -- Hide scrollbar for clean look
         CanvasSize = UDim2.new(0, 0, 0, 0),
-        Parent = sidebarFrame,
+        Parent = sidebarFrame:FindFirstChild("Background"), -- Parent to Background
         ZIndex = 3
     }, {
         Create("UIListLayout", {
@@ -499,7 +526,8 @@ function Rubidium:UpdateLayout()
         end 
 
         local screenGui = win.Instance.Parent -- MainFrame 的父级 (ScreenGui)
-        local rightPatch = win.Sidebar:FindFirstChild("RightPatch")
+        local sbBackground = win.Sidebar:FindFirstChild("Background")
+        local rightPatch = sbBackground and sbBackground:FindFirstChild("RightPatch")
         
         -- [Safe] 确保 ScreenGui 存在，防止已销毁报错
         if not screenGui then return end
@@ -838,15 +866,17 @@ end
 
 function Rubidium:InitialLoad(main, side)
     -- 初始入场动画
-    main.BackgroundTransparency = 1
+    local mainBg = main:FindFirstChild("Background")
+    if mainBg then
+        mainBg.BackgroundTransparency = 1
+        -- 淡入效果
+        TweenService:Create(mainBg, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0
+        }):Play()
+    end
     
     -- 强制刷新一次布局以确保位置正确
     self:UpdateLayout()
-    
-    -- 淡入效果
-    TweenService:Create(main, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-        BackgroundTransparency = 0
-    }):Play()
 end
 
 return Rubidium
