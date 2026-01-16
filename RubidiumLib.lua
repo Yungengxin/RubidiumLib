@@ -44,6 +44,7 @@ local Rubidium = {
         TextColor = Color3.fromRGB(240, 240, 240),
         SubTextColor = Color3.fromRGB(150, 150, 150),
         AnimSpeed = 0.5, -- 稍微调慢一点让动画更明显
+        GlowColor = Color3.fromRGB(0, 170, 255), -- [New] 光晕颜色
         BaseSize = Vector2.new(600, 380), 
         SidebarWidth = 80
     }
@@ -171,7 +172,15 @@ function Rubidium:CreateWindow(options)
         Parent = screenGui,
         ClipsDescendants = false -- 允许子元素(如侧边栏)在动画时超出边界
     }, {
-        Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+        Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
+        -- [New] Glow Stroke for MainFrame
+        Create("UIStroke", {
+            Name = "Glow",
+            Thickness = 2,
+            Transparency = 0.5,
+            Color = self.Config.GlowColor,
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        })
     })
 
     -- Sidebar (初始父级设为 mainFrame)
@@ -184,6 +193,15 @@ function Rubidium:CreateWindow(options)
         ZIndex = 2
     }, {
         Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
+        -- [New] Glow Stroke for Sidebar
+        Create("UIStroke", {
+            Name = "Glow",
+            Thickness = 2,
+            Transparency = 0.5,
+            Color = self.Config.GlowColor,
+            ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            Enabled = false -- 初始 Unified 模式下 MainFrame 处理整体发光
+        }),
         Create("ImageLabel", {
             Name = "AppIcon",
             BackgroundTransparency = 1,
@@ -511,6 +529,8 @@ function Rubidium:UpdateLayout()
                     self.IsAnimating = false 
                     if rightPatch then rightPatch.Visible = true end
                     
+                    self:UpdateGlow(win) -- 确保动画结束更新光晕
+
                     -- [Fix Title] 调整标题位置
                     local titleBar = win.Instance:FindFirstChild("TitleBar")
                     if titleBar then
@@ -568,6 +588,9 @@ function Rubidium:UpdateLayout()
                         
                         -- 显示遮罩
                         if rightPatch then rightPatch.Visible = true end
+                        
+                        -- 更新光晕状态
+                        self:UpdateGlow(win)
                         
                         -- [Fix Title] 调整标题位置
                         local titleBar = win.Instance:FindFirstChild("TitleBar")
@@ -643,7 +666,10 @@ function Rubidium:UpdateLayout()
                 Size = sbTargetSize
             })
             tSb:Play()
-            tSb.Completed:Connect(function() self.IsAnimating = false end)
+            tSb.Completed:Connect(function() 
+                self.IsAnimating = false 
+                self:UpdateGlow(win) -- 动画结束更新光晕
+            end)
         end
     end
 end
@@ -653,13 +679,71 @@ function Rubidium:ToggleState()
     self:UpdateLayout()
 end
 
--- ==========================================
--- RenderStepped 循环 (预留)
--- ==========================================
--- 暂时不需要高频循环，为了性能优化将其移除，如有物理需求可解除注释
--- RunService.RenderStepped:Connect(function() end)
+    function Rubidium:UpdateGlow(win)
+        -- [New] 动态光晕更新
+        local mainGlow = win.Instance:FindFirstChild("Glow")
+        local sbGlow = win.Sidebar:FindFirstChild("Glow")
+        if not mainGlow or not sbGlow then return end
 
-function Rubidium:SetFullscreen(win, isFull)
+        if self.State == "Unified" and not self.IsAnimating then
+             mainGlow.Enabled = true
+             sbGlow.Enabled = false
+             mainGlow.Transparency = 0.5
+             mainGlow.Color = self.Config.GlowColor
+        elseif self.State == "Detached" and not self.IsAnimating then
+             mainGlow.Enabled = true
+             sbGlow.Enabled = true
+             mainGlow.Transparency = 0.5
+             sbGlow.Transparency = 0.5
+             mainGlow.Color = self.Config.GlowColor
+             sbGlow.Color = self.Config.GlowColor
+        end
+    end
+
+    -- ==========================================
+    -- RenderStepped 循环 (处理动态光晕)
+    -- ==========================================
+    RunService.RenderStepped:Connect(function()
+        for _, win in pairs(Rubidium.ActiveWindows) do
+            if Rubidium.IsAnimating then
+                local mainGlow = win.Instance:FindFirstChild("Glow")
+                local sbGlow = win.Sidebar:FindFirstChild("Glow")
+                
+                if mainGlow and sbGlow then
+                    -- 计算 Sidebar 和 MainFrame 的距离
+                    local sbPos = win.Sidebar.AbsolutePosition
+                    local mainPos = win.Instance.AbsolutePosition
+                    -- 简单的距离估算 (中心点距离或者边缘距离)
+                    local dist = (Vector2.new(sbPos.X, sbPos.Y) - Vector2.new(mainPos.X, mainPos.Y)).Magnitude
+                    
+                    -- 距离越近，越亮 (Transparency 越低)
+                    -- 假设最大距离 300，最小距离 0
+                    local maxDist = 300
+                    local alpha = math.clamp(dist / maxDist, 0, 1)
+                    
+                    -- 动态调整
+                    -- Alpha 0 (近): 亮蓝 (Transparency 0.2, Color Blue)
+                    -- Alpha 1 (远): 淡蓝 (Transparency 0.8, Color Pale Blue)
+                    
+                    local targetTrans = 0.2 + (0.6 * alpha)
+                    local targetColor = Rubidium.Config.GlowColor:Lerp(Color3.new(0.8, 0.9, 1), alpha) -- 变白/淡
+                    
+                    mainGlow.Enabled = true
+                    sbGlow.Enabled = true
+                    
+                    mainGlow.Transparency = targetTrans
+                    sbGlow.Transparency = targetTrans
+                    mainGlow.Color = targetColor
+                    sbGlow.Color = targetColor
+                end
+            else
+                 -- 非动画期间保持静态光晕状态
+                 Rubidium:UpdateGlow(win)
+            end
+        end
+    end)
+
+    function Rubidium:SetFullscreen(win, isFull)
     local scale = self:GetScale()
     local sbWidth = self.Config.SidebarWidth * scale
     
