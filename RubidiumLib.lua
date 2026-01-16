@@ -174,19 +174,6 @@ function Rubidium:CreateWindow(options)
         Parent = screenGui,
         ClipsDescendants = false 
     }, {
-        -- [New] Glow Image (Back Layer)
-        Create("ImageLabel", {
-            Name = "Glow",
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, -35, 0, -35), -- 增加扩散范围
-            Size = UDim2.new(1, 70, 1, 70),
-            ZIndex = 0, 
-            Image = "rbxassetid://5028857472", 
-            ImageColor3 = self.Config.GlowColor,
-            ScaleType = Enum.ScaleType.Slice,
-            SliceCenter = Rect.new(24, 24, 276, 276),
-            ImageTransparency = 0.5
-        }),
         -- [New] Actual Background (Front Layer)
         Create("Frame", {
             Name = "Background",
@@ -194,7 +181,15 @@ function Rubidium:CreateWindow(options)
             Size = UDim2.new(1, 0, 1, 0),
             ZIndex = 1
         }, {
-            Create("UICorner", {CornerRadius = UDim.new(0, 8)})
+            Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
+            -- [New] Neon Glow using UIStroke (Inside Background)
+            Create("UIStroke", {
+                Name = "Glow",
+                Thickness = 3, -- 增加厚度
+                Transparency = 0.5,
+                Color = self.Config.GlowColor,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border -- 作用于边框
+            })
         })
     })
 
@@ -207,20 +202,6 @@ function Rubidium:CreateWindow(options)
         Parent = mainFrame, 
         ZIndex = 2
     }, {
-        -- [New] Glow Image
-        Create("ImageLabel", {
-            Name = "Glow",
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, -35, 0, -35),
-            Size = UDim2.new(1, 70, 1, 70),
-            ZIndex = 0,
-            Image = "rbxassetid://5028857472",
-            ImageColor3 = self.Config.GlowColor,
-            ScaleType = Enum.ScaleType.Slice,
-            SliceCenter = Rect.new(24, 24, 276, 276),
-            ImageTransparency = 0.5,
-            Visible = false 
-        }),
         -- [New] Actual Background
         Create("Frame", {
             Name = "Background",
@@ -229,6 +210,15 @@ function Rubidium:CreateWindow(options)
             ZIndex = 2
         }, {
              Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
+             -- [New] Neon Glow for Sidebar
+             Create("UIStroke", {
+                Name = "Glow",
+                Thickness = 3,
+                Transparency = 0.5,
+                Color = self.Config.GlowColor,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+                Enabled = false
+             }),
              Create("ImageLabel", {
                 Name = "AppIcon",
                 BackgroundTransparency = 1,
@@ -720,22 +710,26 @@ end
 
     function Rubidium:UpdateGlow(win)
         -- [New] 动态光晕更新
-        local mainGlow = win.Instance:FindFirstChild("Glow")
-        local sbGlow = win.Sidebar:FindFirstChild("Glow")
+        local mainBg = win.Instance:FindFirstChild("Background")
+        local sbBg = win.Sidebar:FindFirstChild("Background")
+        
+        local mainGlow = mainBg and mainBg:FindFirstChild("Glow")
+        local sbGlow = sbBg and sbBg:FindFirstChild("Glow")
+        
         if not mainGlow or not sbGlow then return end
 
         if self.State == "Unified" and not self.IsAnimating then
-             mainGlow.Visible = true
-             sbGlow.Visible = false
-             mainGlow.ImageTransparency = 0.5
-             mainGlow.ImageColor3 = self.Config.GlowColor
+             mainGlow.Enabled = true
+             sbGlow.Enabled = false
+             mainGlow.Transparency = 0.6
+             mainGlow.Color = self.Config.GlowColor
         elseif self.State == "Detached" and not self.IsAnimating then
-             mainGlow.Visible = true
-             sbGlow.Visible = true
-             mainGlow.ImageTransparency = 0.5
-             sbGlow.ImageTransparency = 0.5
-             mainGlow.ImageColor3 = self.Config.GlowColor
-             sbGlow.ImageColor3 = self.Config.GlowColor
+             mainGlow.Enabled = true
+             sbGlow.Enabled = true
+             mainGlow.Transparency = 0.6
+             sbGlow.Transparency = 0.6
+             mainGlow.Color = self.Config.GlowColor
+             sbGlow.Color = self.Config.GlowColor
         end
     end
 
@@ -745,8 +739,11 @@ end
     RunService.RenderStepped:Connect(function()
         for _, win in pairs(Rubidium.ActiveWindows) do
             if Rubidium.IsAnimating then
-                local mainGlow = win.Instance:FindFirstChild("Glow")
-                local sbGlow = win.Sidebar:FindFirstChild("Glow")
+                local mainBg = win.Instance:FindFirstChild("Background")
+                local sbBg = win.Sidebar:FindFirstChild("Background")
+                
+                local mainGlow = mainBg and mainBg:FindFirstChild("Glow")
+                local sbGlow = sbBg and sbBg:FindFirstChild("Glow")
                 
                 if mainGlow and sbGlow then
                     -- 计算 Sidebar 和 MainFrame 的距离
@@ -761,19 +758,19 @@ end
                     local alpha = math.clamp(dist / maxDist, 0, 1)
                     
                     -- 动态调整
-                    -- Alpha 0 (近): 亮蓝 (Transparency 0.2, Color Blue)
-                    -- Alpha 1 (远): 淡蓝 (Transparency 0.8, Color Pale Blue)
+                    -- Alpha 0 (近): 亮蓝 (Transparency 0.1, Color Blue)
+                    -- Alpha 1 (远): 淡蓝 (Transparency 0.9, Color Pale Blue)
                     
-                    local targetTrans = 0.2 + (0.6 * alpha)
-                    local targetColor = Rubidium.Config.GlowColor:Lerp(Color3.new(0.8, 0.9, 1), alpha) -- 变白/淡
+                    local targetTrans = 0.1 + (0.8 * alpha) -- 变化幅度更大
+                    local targetColor = Rubidium.Config.GlowColor:Lerp(Color3.new(0.9, 0.95, 1), alpha) -- 变白/淡
                     
-                    mainGlow.Visible = true
-                    sbGlow.Visible = true
+                    mainGlow.Enabled = true
+                    sbGlow.Enabled = true
                     
-                    mainGlow.ImageTransparency = targetTrans
-                    sbGlow.ImageTransparency = targetTrans
-                    mainGlow.ImageColor3 = targetColor
-                    sbGlow.ImageColor3 = targetColor
+                    mainGlow.Transparency = targetTrans
+                    sbGlow.Transparency = targetTrans
+                    mainGlow.Color = targetColor
+                    sbGlow.Color = targetColor
                 end
             else
                  -- 非动画期间保持静态光晕状态
