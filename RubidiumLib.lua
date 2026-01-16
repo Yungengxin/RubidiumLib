@@ -44,7 +44,6 @@ local Rubidium = {
         TextColor = Color3.fromRGB(240, 240, 240),
         SubTextColor = Color3.fromRGB(150, 150, 150),
         AnimSpeed = 0.5, -- 稍微调慢一点让动画更明显
-        GlowColor = Color3.fromRGB(130, 80, 255), -- [User Request] Purple/Blue-ish Glow
         BaseSize = Vector2.new(600, 380), 
         SidebarWidth = 80
     }
@@ -143,30 +142,6 @@ function Rubidium:MakeDraggable(target, draggingPart)
             update(input)
         end
     end)
-end
-
--- ==========================================
--- [Helper] Create Multi-Layer Glow
--- ==========================================
-function Rubidium:CreateNeonGlow(parent, color)
-    -- [User Request Match] 使用参考代码中的 Shader 逻辑 (rbxassetid://6906809185)
-    -- 这实际上是一个背景阴影/光晕图层，放置在 MainFrame/Sidebar 内容下方
-    
-    local shader = Create("ImageLabel", {
-        Name = "Shader", -- 保持与参考代码一致的命名习惯
-        BackgroundTransparency = 1,
-        ImageColor3 = color, -- 使用用户指定的光晕颜色 (紫色)
-        Size = UDim2.new(1.1, 0, 1.1, 0), -- 稍微比父级大一点，形成向外发散效果
-        Position = UDim2.new(0.5, 0, 0.5, 0),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Image = "rbxassetid://6906809185", -- 核心素材
-        Parent = parent,
-        ZIndex = 0, -- 确保在背景下方 (Background ZIndex 应为 1 或更高)
-        ScaleType = Enum.ScaleType.Slice,
-        SliceCenter = Rect.new(99, 99, 99, 99) -- 经验值，针对此素材的常用 Slice
-    })
-    
-    return shader
 end
 
 -- ==========================================
@@ -764,7 +739,7 @@ function Rubidium:UpdateLayout()
             tSb:Play()
             tSb.Completed:Connect(function() 
                 self.IsAnimating = false 
-                self:UpdateGlow(win) -- 动画结束更新光晕
+                self:UpdatePatch(win, 1)
             end)
         end
     end
@@ -775,61 +750,55 @@ function Rubidium:ToggleState()
     self:UpdateLayout()
 end
 
-    function Rubidium:UpdateGlow(win)
-        -- [New] 动态光晕更新 (Shader Logic)
-        local mainShader = win.Instance:FindFirstChild("Shader")
-        local sbShader = win.Sidebar:FindFirstChild("Shader")
+    function Rubidium:UpdatePatch(win, alpha)
+        -- [New] 动态圆角遮罩 (Alpha 0 = 合并, Alpha 1 = 分离)
+        -- 我们需要控制 LeftPatch (MainFrame) 和 RightPatch (Sidebar) 的透明度
         
-        if not mainShader or not sbShader then return end
+        local mainBg = win.Instance:FindFirstChild("Background")
+        local sbBg = win.Sidebar:FindFirstChild("Background")
         
-        if self.State == "Unified" and not self.IsAnimating then
-             mainShader.Visible = true
-             sbShader.Visible = false
-             mainShader.ImageColor3 = self.Config.GlowColor
-             mainShader.ImageTransparency = 0 -- 核心不透明度，可调
-        elseif self.State == "Detached" and not self.IsAnimating then
-             mainShader.Visible = true
-             sbShader.Visible = true
-             mainShader.ImageColor3 = self.Config.GlowColor
-             sbShader.ImageColor3 = self.Config.GlowColor
-             mainShader.ImageTransparency = 0
-             sbShader.ImageTransparency = 0
+        local leftPatch = mainBg and mainBg:FindFirstChild("LeftPatch")
+        local rightPatch = sbBg and sbBg:FindFirstChild("RightPatch")
+        
+        -- 当 Alpha 接近 0 (合并) 时，Transparency 接近 0 (不透明，显示直角)
+        -- 当 Alpha 接近 1 (分离) 时，Transparency 接近 1 (透明，显示圆角)
+        
+        if leftPatch then leftPatch.BackgroundTransparency = alpha end
+        if rightPatch then rightPatch.BackgroundTransparency = alpha end
+        
+        -- 可见性优化：完全透明时隐藏
+        if alpha >= 0.95 then
+            if leftPatch then leftPatch.Visible = false end
+            if rightPatch then rightPatch.Visible = false end
+        else
+            if leftPatch then leftPatch.Visible = true end
+            if rightPatch then rightPatch.Visible = true end
         end
     end
 
     -- ==========================================
-    -- RenderStepped 循环 (处理动态光晕)
+    -- RenderStepped 循环 (处理 Patch 动画)
     -- ==========================================
     RunService.RenderStepped:Connect(function()
         for _, win in pairs(Rubidium.ActiveWindows) do
             if Rubidium.IsAnimating then
-                local mainShader = win.Instance:FindFirstChild("Shader")
-                local sbShader = win.Sidebar:FindFirstChild("Shader")
+                -- 计算 Sidebar 和 MainFrame 的距离
+                local sbPos = win.Sidebar.AbsolutePosition
+                local mainPos = win.Instance.AbsolutePosition
+                local dist = (Vector2.new(sbPos.X, sbPos.Y) - Vector2.new(mainPos.X, mainPos.Y)).Magnitude
                 
-                if mainShader and sbShader then
-                    -- 计算距离
-                    local sbPos = win.Sidebar.AbsolutePosition
-                    local mainPos = win.Instance.AbsolutePosition
-                    local dist = (Vector2.new(sbPos.X, sbPos.Y) - Vector2.new(mainPos.X, mainPos.Y)).Magnitude
-                    
-                    local maxDist = 300
-                    local alpha = math.clamp(dist / maxDist, 0, 1)
-                    
-                    -- 动态调整
-                    -- 分离时（Alpha -> 1）：变淡
-                    -- 合并时（Alpha -> 0）：变亮（不透明）
-                    local targetTrans = 0 + (0.5 * alpha) 
-                    
-                    mainShader.Visible = true
-                    sbShader.Visible = true
-                    
-                    mainShader.ImageTransparency = targetTrans
-                    sbShader.ImageTransparency = targetTrans
-                    mainShader.ImageColor3 = Rubidium.Config.GlowColor
-                    sbShader.ImageColor3 = Rubidium.Config.GlowColor
-                end
+                local maxDist = 300
+                local alpha = math.clamp(dist / maxDist, 0, 1)
+                
+                -- 更新 Patch 透明度
+                Rubidium:UpdatePatch(win, alpha)
             else
-                 Rubidium:UpdateGlow(win)
+                 -- 非动画期间保持 Patch 状态
+                 if Rubidium.State == "Unified" then
+                     Rubidium:UpdatePatch(win, 0)
+                 else
+                     Rubidium:UpdatePatch(win, 1)
+                 end
             end
         end
     end)
